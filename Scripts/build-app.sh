@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+#
+# Build atst.app as an installable bundle.
+#
+# Version handling:
+#   - If $ATST_VERSION is set (e.g. "v0.1.3" or "0.1.3"), strip any
+#     leading "v" and write the result into Info.plist's
+#     CFBundleShortVersionString. Released DMGs flow through release.sh,
+#     which sets this for us.
+#   - If $ATST_VERSION is unset, fall back to "dev". The app reads this
+#     value at runtime to render "atst v0.1.3" in the settings header,
+#     or "atst dev" for local builds.
+#
+# Output: .build/atst.app (release-config, ad-hoc codesigned)
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,6 +23,11 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
+# Version string for Info.plist. Strip a leading "v" if present so
+# CFBundleShortVersionString is the bare semver (Apple-conventional).
+VERSION="${ATST_VERSION:-dev}"
+VERSION_STRIPPED="${VERSION#v}"
+
 cd "$ROOT_DIR"
 swift build -c release
 swift Scripts/generate-icons.swift
@@ -17,7 +36,6 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILD_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
-cp "$ROOT_DIR/Resources/MenuBarIcon.png" "$RESOURCES_DIR/MenuBarIcon.png"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -37,9 +55,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$VERSION_STRIPPED</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$VERSION_STRIPPED</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>LSUIElement</key>

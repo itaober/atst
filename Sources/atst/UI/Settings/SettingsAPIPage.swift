@@ -59,6 +59,12 @@ struct SettingsAPIPage: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
+            // Up / Down buttons reorder the array directly. The tooltip
+            // renders providers in this exact order, so moving Microsoft
+            // above Google here flips the same vertical order in the
+            // live result panel. Disabled at the array ends so users
+            // don't see them flash as no-ops.
+            reorderControls(index: index)
             Toggle("", isOn: Binding(
                 get: { draft.apiProviders[index].enabled },
                 set: { newValue in
@@ -74,6 +80,45 @@ struct SettingsAPIPage: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    private func reorderControls(index: Int) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                moveProvider(from: index, to: index - 1)
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.tertiary)
+            .disabled(index == 0 || !draft.apiEnabled)
+            .help(L.pick("Move up", "上移"))
+
+            Button {
+                moveProvider(from: index, to: index + 1)
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.tertiary)
+            .disabled(index == draft.apiProviders.count - 1 || !draft.apiEnabled)
+            .help(L.pick("Move down", "下移"))
+        }
+        .opacity(draft.apiEnabled ? 1 : 0.4)
+    }
+
+    private func moveProvider(from source: Int, to dest: Int) {
+        guard source >= 0, source < draft.apiProviders.count,
+              dest >= 0, dest < draft.apiProviders.count else { return }
+        let item = draft.apiProviders.remove(at: source)
+        draft.apiProviders.insert(item, at: dest)
+        save()
     }
 
     private func displayName(for entry: APIProviderEntry) -> String {

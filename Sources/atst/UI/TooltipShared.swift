@@ -234,6 +234,32 @@ struct TooltipDescription: View {
 // screen. We fall back to plain `ProgressView` spinners for every loading
 // state; the spinner already conveys "in flight" the conventional way.)
 
+// MARK: - Shared sizing rules
+
+/// Width rules used by both the live tooltip and pinned notes.
+///
+/// The two views render the same kind of content (translation segments)
+/// and would visibly drift if they computed widths independently. Anyone
+/// changing the threshold or the wide/narrow values should do it here so
+/// pinned notes stay visually consistent with the live tooltip they were
+/// captured from.
+enum TooltipSizing {
+    static let narrowWidth: CGFloat = 320
+    static let wideWidth: CGFloat = 480
+
+    /// Long-source threshold: anything beyond ~one English sentence (or
+    /// containing a newline) reads better in the wider column. Below this
+    /// the narrow width gives single words / short phrases the tighter,
+    /// more iconic look they deserve.
+    static func preferredWidth(forSource source: String) -> CGFloat {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 80 || trimmed.contains("\n") {
+            return wideWidth
+        }
+        return narrowWidth
+    }
+}
+
 // MARK: - Live tooltip layout state
 
 /// Carries the maximum height the tooltip's scrollable content can occupy.

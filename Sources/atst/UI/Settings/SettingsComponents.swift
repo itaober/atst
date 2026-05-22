@@ -186,8 +186,3 @@ struct SettingsSecureRow: View {
         .padding(.vertical, 6)
     }
 }
-
-// (SettingsNumberRow removed — the "label above input" layout it provided
-// no longer fits anywhere in the panel. The General section's timeout row
-// is now inlined as a horizontal "label left / control right" row to match
-// the rest of the section's rhythm.)

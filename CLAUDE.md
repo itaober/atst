@@ -105,6 +105,10 @@ When extending: prefer adding a row inside the existing General sections rather 
 
 Release titles are version-only (`v0.1.2`, not `v0.1.2 — feature X`). Notes are bilingual changelog excerpts; do **not** duplicate install instructions there — the README already covers them.
 
+`release.sh` sets `ATST_VERSION=$VERSION` before invoking `build-dmg.sh`. That env var threads down to `build-app.sh`, which writes the stripped semver (`0.1.3`) into the .app's `CFBundleShortVersionString`. `Branding.versionDisplay` reads that at runtime to render `atst v0.1.3` in the settings header. Local `swift run` builds and unflagged `build-app.sh` runs fall back to `dev`, which `Branding` displays verbatim.
+
+`UpdateChecker` hits `api.github.com/repos/itaober/atst/releases/latest` once per app launch (and on settings-open, throttled to a 4h TTL). A newer tag → an orange "Update vX.Y.Z" pill next to the title that opens the GitHub release page. Private-repo gotcha: the API returns 403 to unauthenticated requests against private repos, so the pill silently never appears. Make the repo public for this feature to surface anything.
+
 ## Conventions worth knowing
 
 - **XML output protocol** is the contract between AI prompts and `TranslationOutputParser`. Any change to tag names (`atst-result` / `atst-item` / `atst-phonetic` / `atst-desc` / `atst-translatable`) needs synchronised updates to: parser, prompt assembly in `OpenAIProvider`, screenshot prompt in `ScreenshotVisionService`, and few-shot examples. Parser tolerates incomplete tags during streaming so users see token-by-token output.

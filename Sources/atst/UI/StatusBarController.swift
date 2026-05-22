@@ -5,6 +5,7 @@ import SwiftUI
 final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let settingsStore: SettingsStore
+    private let updateChecker: UpdateChecker
     private let onTranslateSelection: () -> Void
     private let onTranslateScreenshot: () -> Void
     private let onQuit: () -> Void
@@ -15,11 +16,13 @@ final class StatusBarController: NSObject {
 
     init(
         settingsStore: SettingsStore,
+        updateChecker: UpdateChecker,
         onTranslateSelection: @escaping () -> Void,
         onTranslateScreenshot: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
+        self.updateChecker = updateChecker
         self.onTranslateSelection = onTranslateSelection
         self.onTranslateScreenshot = onTranslateScreenshot
         self.onQuit = onQuit
@@ -58,6 +61,9 @@ final class StatusBarController: NSObject {
     private func open() {
         let panel = panel ?? makePanel()
         self.panel = panel
+        // Opportunistic refresh — checker rate-limits internally so opening
+        // settings 50 times in a row only hits the network once per 4h.
+        updateChecker.checkInBackground()
 
         guard let button = statusItem.button,
               let buttonWindow = button.window else { return }
@@ -113,6 +119,7 @@ final class StatusBarController: NSObject {
     private func makePanel() -> NSPanel {
         let content = MenuBarSettingsView(
             settingsStore: settingsStore,
+            updateChecker: updateChecker,
             onTranslateSelection: { [weak self] in
                 self?.close()
                 self?.onTranslateSelection()

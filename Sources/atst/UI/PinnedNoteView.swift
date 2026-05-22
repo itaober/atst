@@ -87,11 +87,7 @@ struct PinnedNoteView: View {
     /// long-text translation that was wide while live stays wide once
     /// pinned, preserving readability after detachment.
     private var pinnedWidth: CGFloat {
-        let trimmed = snapshot.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count > 80 || trimmed.contains("\n") {
-            return 480
-        }
-        return 320
+        TooltipSizing.preferredWidth(forSource: snapshot.sourceText)
     }
 
     private var header: some View {

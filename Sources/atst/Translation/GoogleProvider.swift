@@ -68,6 +68,20 @@ struct GoogleProvider: TranslationProvider {
         // string is rejected with HTTP 400 by this endpoint.
         let toCode = LanguageCode.bcp47(from: targetLanguage) ?? "en"
 
+        // translateHtml accepts a single text or an array of texts and
+        // returns a parallel array of translations. Critically: it
+        // collapses any `\n` inside a single text into a single output
+        // blob (newlines / paragraph structure / markdown list breaks
+        // all disappear). To preserve the source's line structure we
+        // split by `\n`, send the non-blank lines as separate array
+        // entries, and reassemble afterwards — empty lines are kept at
+        // their original index without burning a slot in the request.
+        let lines = text.components(separatedBy: "\n")
+        let payloadIndices = lines.indices.filter { idx in
+            !lines[idx].trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        let payloadLines = payloadIndices.map { lines[$0] }
+
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
@@ -76,7 +90,7 @@ struct GoogleProvider: TranslationProvider {
 
         // Positional protobuf-as-JSON shape — order matters, no keys.
         let body: [Any] = [
-            [[text], "auto", toCode],
+            [payloadLines, "auto", toCode],
             "wt_lib"
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
@@ -93,15 +107,30 @@ struct GoogleProvider: TranslationProvider {
             throw AppError.aiRequestFailed("Google returned an unrecognised response")
         }
         let latency = Int(Date().timeIntervalSince(started) * 1000)
-        AppLogger.log("google translate status=\(http.statusCode) bytes=\(data.count) latencyMs=\(latency)")
+        AppLogger.log("google translate status=\(http.statusCode) bytes=\(data.count) latencyMs=\(latency) lines=\(payloadLines.count)")
 
         guard (200..<300).contains(http.statusCode) else {
             let bodyPreview = String(data: data.prefix(400), encoding: .utf8) ?? "<binary>"
             throw AppError.aiRequestFailed("Google HTTP \(http.statusCode): \(bodyPreview)")
         }
 
-        let parsed = try parseResponse(data: data)
-        let decoded = HTMLEntityDecoder.decode(parsed).trimmingCharacters(in: .whitespacesAndNewlines)
+        let translatedLines = try parseResponse(data: data)
+        // Defensive: count mismatch shouldn't happen under normal
+        // operation (Google echoes the same array length), but if the
+        // server changes shape we'd rather fail loud than silently mis-
+        // align translations to source lines.
+        guard translatedLines.count == payloadLines.count else {
+            throw AppError.aiRequestFailed("Google: line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
+        }
+
+        // Reassemble: drop translated lines back into their original
+        // indices, blank lines stay blank. HTML-decode each line as we
+        // go since Google returns `&amp;` / `&#39;` etc.
+        var assembled = lines
+        for (slotIndex, originalIndex) in payloadIndices.enumerated() {
+            assembled[originalIndex] = HTMLEntityDecoder.decode(translatedLines[slotIndex])
+        }
+        let decoded = assembled.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !decoded.isEmpty else { throw AppError.emptyTranslation }
 
         let untranslatable = looksUntranslatable(source: text, result: decoded)
@@ -115,19 +144,25 @@ struct GoogleProvider: TranslationProvider {
         return TranslationProviderEmission(output: output, raw: decoded, isFinal: true)
     }
 
-    /// Parse `[["<translated>"], "<detected>"]` defensively — handle either
-    /// nested-array or flat-string shapes so a minor server-side change
+    /// Parse the Google translateHtml response into an array of
+    /// translated strings. Expected shape:
+    ///   [["<trans_1>", "<trans_2>", ...], ["<detected_lang_1>", ...]]
+    /// Falls back to defensively handling either single-string or
+    /// single-array first elements so a minor server-side change
     /// doesn't crash us hard.
-    private func parseResponse(data: Data) throws -> String {
+    private func parseResponse(data: Data) throws -> [String] {
         let json = try JSONSerialization.jsonObject(with: data, options: [])
-        if let outer = json as? [Any],
-           let firstArray = outer.first as? [Any],
-           let first = firstArray.first as? String {
-            return first
+        guard let outer = json as? [Any] else {
+            throw AppError.aiRequestFailed("Google: unexpected response shape")
         }
-        if let outer = json as? [Any],
-           let first = outer.first as? String {
-            return first
+        if let firstArray = outer.first as? [Any] {
+            let strings = firstArray.compactMap { $0 as? String }
+            if !strings.isEmpty {
+                return strings
+            }
+        }
+        if let firstString = outer.first as? String {
+            return [firstString]
         }
         throw AppError.aiRequestFailed("Google: unexpected response shape")
     }

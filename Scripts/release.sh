@@ -81,7 +81,11 @@ if [[ -z "$ZH_NOTES" ]]; then
   exit 1
 fi
 
-echo "→ Building DMG"
+echo "→ Building DMG (with version $VERSION baked into Info.plist)"
+# Export ATST_VERSION so build-app.sh writes the right CFBundleShortVersionString
+# into the .app's Info.plist. Without this the version string would default
+# to "dev" and the in-app version display would lie.
+export ATST_VERSION="$VERSION"
 bash Scripts/build-dmg.sh
 
 DMG_PATH="$ROOT_DIR/.build/atst.dmg"

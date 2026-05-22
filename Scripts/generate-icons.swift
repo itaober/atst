@@ -79,28 +79,9 @@ func drawAppIcon(in rect: NSRect) {
     tile.stroke()
 }
 
-func drawMenuBarIcon(in rect: NSRect) {
-    // Template image: black artwork on transparent background; macOS tints
-    // it to match the menu bar appearance (light, dark, hover, etc).
-    // A single bold "字" character — universally readable as "text /
-    // translation", no chat-bubble = no IM-app feel.
-    NSColor.clear.setFill()
-    rect.fill()
-
-    let edge = min(rect.width, rect.height)
-    let pointSize = edge * 0.78
-    let attrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: pointSize, weight: .bold),
-        .foregroundColor: NSColor.black
-    ]
-    let glyph = NSAttributedString(string: "字", attributes: attrs)
-    let glyphSize = glyph.size()
-    let origin = NSPoint(
-        x: (rect.width - glyphSize.width) / 2,
-        y: (rect.height - glyphSize.height) / 2 - edge * 0.02
-    )
-    glyph.draw(at: origin)
-}
+// (`drawMenuBarIcon` removed — StatusBarController renders the literal
+// text "atst" via `button.title`, so the rendered image was never
+// loaded.)
 
 let iconSizes: [(String, Int)] = [
     ("icon_16x16.png", 16),
@@ -120,12 +101,6 @@ for (name, size) in iconSizes {
     try writePNG(image, to: iconsetURL.appendingPathComponent(name))
 }
 
-let menuIcon = makeBitmap(width: 36, height: 36, draw: drawMenuBarIcon)
-try writePNG(menuIcon, to: resourcesURL.appendingPathComponent("MenuBarIcon.png"))
-
-let previewIcon = makeBitmap(width: 1024, height: 1024, draw: drawAppIcon)
-try writePNG(previewIcon, to: resourcesURL.appendingPathComponent("AppIcon-preview.png"))
-
 let process = Process()
 process.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 process.arguments = [
@@ -143,4 +118,3 @@ guard process.terminationStatus == 0 else {
 }
 
 print(resourcesURL.appendingPathComponent("AppIcon.icns").path)
-print(resourcesURL.appendingPathComponent("MenuBarIcon.png").path)

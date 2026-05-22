@@ -18,6 +18,7 @@ private enum ShortcutTarget: Equatable {
 /// the same width across navigation.
 struct MenuBarSettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
+    @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var cache: TranslationCache = .shared
     var onTranslateSelection: () -> Void
     var onTranslateScreenshot: () -> Void
@@ -37,11 +38,13 @@ struct MenuBarSettingsView: View {
 
     init(
         settingsStore: SettingsStore,
+        updateChecker: UpdateChecker,
         onTranslateSelection: @escaping () -> Void,
         onTranslateScreenshot: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
+        self.updateChecker = updateChecker
         self.onTranslateSelection = onTranslateSelection
         self.onTranslateScreenshot = onTranslateScreenshot
         self.onQuit = onQuit
@@ -93,7 +96,7 @@ struct MenuBarSettingsView: View {
     // MARK: - Header / Footer
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             if !routeStack.isEmpty {
                 Button {
                     _ = routeStack.popLast()
@@ -108,12 +111,25 @@ struct MenuBarSettingsView: View {
                 .help(L.pick("Back", "返回"))
             }
 
-            Text(headerTitle)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+            // Title with version suffix. On the root page the version is
+            // a clickable link to the current release page (so users can
+            // jump to the release notes for what they're running). On
+            // sub-pages, the title becomes the page name and the version
+            // affix is suppressed to avoid header clutter.
+            if routeStack.isEmpty {
+                rootTitleLabel
+            } else {
+                Text(headerTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
 
             Spacer()
+
+            if routeStack.isEmpty, updateChecker.hasUpdate, let latest = updateChecker.latest {
+                updateAvailableBadge(latest)
+            }
 
             if routeStack.isEmpty {
                 Button(action: onQuit) {
@@ -129,6 +145,67 @@ struct MenuBarSettingsView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    /// Root-page title: "atst" name + clickable version tag. The tag
+    /// opens the matching release page; for dev builds it links to the
+    /// releases index instead. Kept as a Button (vs raw Text + Link) so
+    /// the hit target is a single rectangle and there's a visible
+    /// hover state.
+    private var rootTitleLabel: some View {
+        Button {
+            NSWorkspace.shared.open(Branding.currentReleaseURL)
+        } label: {
+            // `.firstTextBaseline` makes the two labels sit on a shared
+            // typographic baseline — the bottom of "atst" lines up with
+            // the bottom of "v0.1.4". Default `.center` HStack alignment
+            // floats the smaller version label vertically centered next
+            // to the bigger app name, which looks lopsided.
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(Branding.appName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(Branding.versionDisplay)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(L.pick(
+            "Open release page for \(Branding.versionDisplay)",
+            "打开 \(Branding.versionDisplay) 的 release 页面"
+        ))
+    }
+
+    /// "Update available" pill rendered when GitHub reports a newer
+    /// release than what's running. Tapping opens the new release's
+    /// download page directly (not the running version's page).
+    private func updateAvailableBadge(_ latest: UpdateChecker.ReleaseInfo) -> some View {
+        Button {
+            NSWorkspace.shared.open(latest.htmlURL)
+        } label: {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 5, height: 5)
+                Text(L.pick("Update \(latest.tagName)", "新版 \(latest.tagName)"))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.orange)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.orange.opacity(0.12))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.orange.opacity(0.3), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(L.pick("Download \(latest.tagName) from GitHub", "前往 GitHub 下载 \(latest.tagName)"))
     }
 
     private var headerTitle: String {
@@ -317,20 +394,24 @@ struct MenuBarSettingsView: View {
     /// AI/API entry rows shown on the General page. Each row carries its
     /// enable toggle inline (so the user can flip a segment on/off without
     /// drilling in) plus a chevron to push the detail subpage.
+    ///
+    /// Order matches the live tooltip layout — API rows render above the
+    /// AI section there, so we mirror that order here. Cheap visual
+    /// continuity between settings and runtime.
     private var translatorNavSection: some View {
         SettingsSection(title: L.pick("Translators", "翻译方式")) {
-            translatorNavRow(
-                title: L.pick("AI Translation", "AI 翻译"),
-                subtitle: aiSubtitle,
-                isOn: $draft.aiEnabled,
-                onTap: { routeStack.append(.aiPage) }
-            )
-            Divider().padding(.horizontal, 10)
             translatorNavRow(
                 title: L.pick("API Translation", "API 翻译"),
                 subtitle: apiSubtitle,
                 isOn: $draft.apiEnabled,
                 onTap: { routeStack.append(.apiPage) }
+            )
+            Divider().padding(.horizontal, 10)
+            translatorNavRow(
+                title: L.pick("AI Translation", "AI 翻译"),
+                subtitle: aiSubtitle,
+                isOn: $draft.aiEnabled,
+                onTap: { routeStack.append(.aiPage) }
             )
         }
     }

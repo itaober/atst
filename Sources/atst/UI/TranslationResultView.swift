@@ -91,20 +91,11 @@ struct TranslationResultView: View {
         .fixedSize(horizontal: true, vertical: true)
     }
 
-    /// Two-tier tooltip width. Short selections (a word, a name, a short
-    /// phrase) read better in a narrow column; long selections — sentences
-    /// over ~80 characters or anything multi-line — produce a forest of
-    /// wrapped fragments at the narrow width, so we widen the panel to
-    /// keep each line within a reasonable reading length. The exact
-    /// thresholds are intentionally coarse (binary, not tiered) so the
-    /// panel never feels like its size is drifting unpredictably.
+    /// Two-tier tooltip width — see `TooltipSizing` for the rule and why.
+    /// Same logic is shared with `PinnedNoteView` so a wide live tooltip
+    /// remains wide once pinned.
     private var preferredTooltipWidth: CGFloat {
-        let trimmed = viewModel.state.sourceText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count > 80 || trimmed.contains("\n") {
-            return 480
-        }
-        return 320
+        TooltipSizing.preferredWidth(forSource: viewModel.state.sourceText)
     }
 
     // MARK: - Header

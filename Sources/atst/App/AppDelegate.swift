@@ -5,6 +5,7 @@ import Combine
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
+    private let updateChecker = UpdateChecker()
     private lazy var viewModel = TranslatorViewModel(settingsStore: settingsStore)
     private lazy var panelController = FloatingPanelController(
         viewModel: viewModel,
@@ -17,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private lazy var statusBarController = StatusBarController(
         settingsStore: settingsStore,
+        updateChecker: updateChecker,
         onTranslateSelection: { [weak self] in
             self?.translateSelection()
         },
@@ -48,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         prewarmAllProviders(settingsStore.configuration)
         startPrewarmTimer()
         applyCacheSettings(settingsStore.configuration)
+        // Fire-and-forget update probe. The checker rate-limits itself
+        // (4-hour TTL), so calling on every launch is cheap.
+        updateChecker.checkInBackground()
 
         settingsStore.$configuration
             .dropFirst()
