@@ -22,7 +22,8 @@
 - 🧠 **AI 词典模式** — 单词查询能返回多个义项、IPA 音标、用法解释
 - 📌 **固定为便签** — 把翻译结果钉成悬浮便签，方便回看
 - 💾 **本地缓存** — 重复查询命中 JSON 缓存，按 provider 分别缓存，TTL 和容量上限可配
-- 🌐 **双语界面** — 根据系统语言自动切换中文 / 英文
+- 🪶 **体积小** — DMG 约 2 MB，安装后约 4 MB。纯 Swift/AppKit，无 Electron / Web 视图
+- 🌐 **双语界面** — 根据系统语言自动切换中文 / 英文，也支持手动指定
 - 🆓 **零配置即用** — 不填 API key 也能用（内置 Google + Microsoft）；想要更丰富的输出再接 OpenAI 兼容接口
 
 ---
@@ -156,6 +157,7 @@ open .build/atst.dmg
 - [ ] 翻译历史 + 全文检索
 - [ ] AI 流式逐 token 渲染
 - [ ] Apple 公证 + 正规代码签名（不用再右键 → 打开）
+- [ ] **Liquid Glass 浮窗**（仅 macOS 26+）—— 代码里已经写好 `#if compiler(>=6.2)` + `if #available(macOS 26.0, *)` 双重门控，等 Xcode 26 / Swift 6.2+ 构建工具链 + macOS 26 (Tahoe) 运行环境就会自动启用；现在自动 fallback 到普通的 `NSVisualEffectView` toolTip 材质
 
 ---
 

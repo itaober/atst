@@ -22,7 +22,8 @@ Hit a hotkey, get a translation. Works **out of the box** with built-in Google +
 - 🧠 **AI dictionary mode** — for single words, AI providers can return multiple meanings, IPA phonetics, and a short usage explanation
 - 📌 **Pin as note** — freeze a translation into a floating sticky note for later reference
 - 💾 **Local cache** — repeat lookups hit a JSON cache, scoped per provider; configurable TTL and size cap
-- 🌐 **Bilingual UI** — auto English / Chinese based on system language
+- 🪶 **Tiny footprint** — ~2 MB DMG, ~4 MB installed. Pure Swift/AppKit, no Electron, no Web view
+- 🌐 **Bilingual UI** — auto English / Chinese based on system language, with a manual override
 - 🆓 **Zero-config friendly** — works on a fresh install with no API keys (Google + Microsoft adapters); add an OpenAI-compatible endpoint when you want richer output
 
 ---
@@ -156,6 +157,7 @@ Things on the radar (open an issue if you'd like to vote one up):
 - [ ] Translation history with full-text search
 - [ ] Streaming token-by-token rendering for AI providers that support it
 - [ ] Apple Notarization + proper code signing (no more right-click → Open)
+- [ ] **Liquid Glass tooltip** on macOS 26+ — the code path is already gated behind `#if compiler(>=6.2)` + `if #available(macOS 26.0, *)`; enables automatically once we build with Xcode 26 / Swift 6.2+ SDK and the user is on macOS 26 (Tahoe). Falls back to the regular `NSVisualEffectView` toolTip material until then
 
 ---
 
