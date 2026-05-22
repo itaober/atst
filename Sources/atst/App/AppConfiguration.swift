@@ -6,7 +6,40 @@ enum AppearanceMode: String, Codable, CaseIterable, Equatable {
     case dark
 }
 
+/// Persisted enablement / ordering for a single API provider (Google,
+/// Microsoft, …). `id` matches the `TranslationProviderID` rawValue so we
+/// can resolve it back to a concrete `TranslationProvider` at runtime.
+struct APIProviderEntry: Codable, Equatable, Identifiable {
+    var id: String
+    var enabled: Bool
+
+    init(id: String, enabled: Bool) {
+        self.id = id
+        self.enabled = enabled
+    }
+
+    init(kind: TranslationProviderID, enabled: Bool) {
+        self.id = kind.rawValue
+        self.enabled = enabled
+    }
+
+    var kind: TranslationProviderID? { TranslationProviderID(rawValue: id) }
+}
+
 struct AppConfiguration: Codable, Equatable {
+    // MARK: - Translation mode (NEW in P7)
+    /// AI segment (top-level toggle). When off, the tooltip skips the AI
+    /// section entirely — both segments may be on at the same time.
+    var aiEnabled: Bool
+    /// API segment (top-level toggle). When on, every enabled provider in
+    /// `apiProviders` runs in parallel and renders as a row above the AI
+    /// section.
+    var apiEnabled: Bool
+    /// Ordered list of built-in API providers + their enable state. UI
+    /// surfaces this as a draggable list in the API subpage.
+    var apiProviders: [APIProviderEntry]
+
+    // MARK: - AI provider config
     var baseURL: String
     var apiKey: String
     var textModel: String
@@ -18,6 +51,8 @@ struct AppConfiguration: Codable, Equatable {
     var phoneticEnabled: Bool
     var smartExplanationEnabled: Bool
     var smartExplanationExpandedByDefault: Bool
+
+    // MARK: - Cross-cutting
     var appearanceMode: AppearanceMode
     var cacheEnabled: Bool
     var cacheTTLDays: Int
@@ -25,7 +60,18 @@ struct AppConfiguration: Codable, Equatable {
     var textHotKey: KeyboardShortcutConfig
     var screenshotHotKey: KeyboardShortcutConfig
 
+    static let defaultAPIProviders: [APIProviderEntry] = [
+        .init(kind: .google, enabled: true),
+        .init(kind: .microsoft, enabled: true)
+    ]
+
     static let defaultConfig = AppConfiguration(
+        // AI is off by default — it requires the user to configure base URL /
+        // key / model. API translation works out of the box with the
+        // built-in Google + Microsoft adapters, so we ship it on.
+        aiEnabled: false,
+        apiEnabled: true,
+        apiProviders: defaultAPIProviders,
         baseURL: "http://localhost:11434/v1",
         apiKey: "",
         textModel: "",
@@ -48,6 +94,9 @@ struct AppConfiguration: Codable, Equatable {
     static let storageKey = "atst.configuration.v1"
 
     init(
+        aiEnabled: Bool = false,
+        apiEnabled: Bool = true,
+        apiProviders: [APIProviderEntry] = AppConfiguration.defaultAPIProviders,
         baseURL: String,
         apiKey: String,
         textModel: String,
@@ -66,6 +115,9 @@ struct AppConfiguration: Codable, Equatable {
         textHotKey: KeyboardShortcutConfig = .defaultText,
         screenshotHotKey: KeyboardShortcutConfig = .defaultScreenshot
     ) {
+        self.aiEnabled = aiEnabled
+        self.apiEnabled = apiEnabled
+        self.apiProviders = apiProviders
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.textModel = textModel
@@ -88,6 +140,19 @@ struct AppConfiguration: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = AppConfiguration.defaultConfig
+
+        aiEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? defaults.aiEnabled
+        apiEnabled = try container.decodeIfPresent(Bool.self, forKey: .apiEnabled) ?? defaults.apiEnabled
+        apiProviders = try container.decodeIfPresent([APIProviderEntry].self, forKey: .apiProviders)
+            ?? defaults.apiProviders
+        // Healing: make sure every known built-in provider has an entry.
+        // Older persisted configs (or future ones missing a newly-added
+        // built-in) get topped up with defaults rather than silently losing
+        // an option.
+        let knownIDs = Set(apiProviders.map(\.id))
+        for fallback in defaults.apiProviders where !knownIDs.contains(fallback.id) {
+            apiProviders.append(fallback)
+        }
 
         baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL) ?? defaults.baseURL
         apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? defaults.apiKey
@@ -141,6 +206,16 @@ struct AppConfiguration: Codable, Equatable {
 
     func persistedCopy() -> AppConfiguration {
         self
+    }
+
+    /// Subset of `apiProviders` that's currently enabled AND maps to a
+    /// known built-in provider. Order preserved from settings.
+    var enabledAPIProviderKinds: [TranslationProviderID] {
+        guard apiEnabled else { return [] }
+        return apiProviders.compactMap { entry in
+            guard entry.enabled, let kind = entry.kind else { return nil }
+            return kind
+        }
     }
 
     private static func loadSavedConfig() -> AppConfiguration? {

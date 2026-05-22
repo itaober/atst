@@ -11,6 +11,10 @@ final class TranslatorViewModel: ObservableObject {
     private let settingsStore: SettingsStore
     private let selectedTextProvider: SelectedTextProvider
     private var cancellables = Set<AnyCancellable>()
+    /// Tasks driving the currently-visible text translation — one per
+    /// active provider segment. Replaced wholesale whenever a new
+    /// selection arrives so older results can't write into the newer state.
+    private var activeTextSegmentTasks: [Task<Void, Never>] = []
 
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
@@ -28,61 +32,111 @@ final class TranslatorViewModel: ObservableObject {
         try await selectedTextProvider.selectedText()
     }
 
+    /// Seed the visible state with placeholder segments so the tooltip can
+    /// render its spinners immediately, before any provider has replied.
+    /// Caller invokes this synchronously from the hotkey handler so we beat
+    /// the network on screen.
     func beginTextTranslation(source: String) {
-        state = .loading(message: "Translating…", model: configuration.textModel, mode: .text, source: source)
+        let segments = makePlaceholderSegments()
+        if segments.api.isEmpty && segments.ai == nil {
+            state = .text(TextSegments(source: source, api: [], ai: nil, bothDisabled: true))
+        } else {
+            state = .text(TextSegments(
+                source: source,
+                api: segments.api,
+                ai: segments.ai,
+                bothDisabled: false
+            ))
+        }
     }
 
     func beginScreenshotTranslation() {
-        state = .loading(message: "Translating…", model: configuration.screenshotModel, mode: .screenshot, source: "截图翻译")
+        state = .screenshotLoading(
+            message: L.pick("Translating…", "翻译中…"),
+            model: configuration.screenshotModel,
+            source: L.pick("Screenshot translation", "截图翻译")
+        )
     }
 
+    /// Kick off the configured text providers in parallel. Cache lookups
+    /// happen per-segment up front; on cache miss we spawn a Task per
+    /// provider and let each one update its own segment as it completes.
     func translateSelection(_ selection: SelectedText, bypassCache: Bool = false) async {
-        let cacheKey = TranslationCache.makeKey(text: selection.text, configuration: configuration)
-        if !bypassCache, let entry = TranslationCache.shared.get(key: cacheKey) {
-            state = .success(
-                output: entry.output,
+        cancelActiveTextTasks()
+
+        let providers = buildEnabledProviders()
+        if noTranslatorEnabled {
+            // Both top-level switches are off — short-circuit to the
+            // empty-state tooltip with the "Open settings" CTA.
+            state = .text(TextSegments(
                 source: selection.text,
-                model: entry.model,
-                mode: .text,
-                cacheInfo: TranslationCache.CacheInfo(cachedAt: entry.createdAt, source: entry.source)
-            )
+                api: [],
+                ai: nil,
+                bothDisabled: true
+            ))
             return
         }
-        do {
-            let service = TranslationService(configuration: configuration)
-            let raw = try await service.streamTranslateText(selection.text) { [weak self] delta in
-                self?.append(delta: delta, mode: .text, source: selection.text)
-            }
-            let output = TranslationOutputParser.parse(raw)
-            if output.result.isEmpty {
-                state = .failure(DisplayError(AppError.emptyTranslation))
+        if providers.isEmpty {
+            // Switches are on but every resolved provider was filtered out
+            // (e.g. API toggle on with every provider disabled). Render an
+            // explanatory empty state so the user doesn't get a silent
+            // tooltip with no segments.
+            state = .text(TextSegments(
+                source: selection.text,
+                api: [],
+                ai: nil,
+                bothDisabled: true
+            ))
+            return
+        }
+
+        // Seed segments with a loading state so the tooltip lays out
+        // immediately. Cache hits flip individual segments to .success on
+        // the same frame.
+        var apiSegments: [ProviderSegment] = []
+        var aiSegment: ProviderSegment? = nil
+        for provider in providers {
+            let id = provider.id
+            let cachedEntry = bypassCache ? nil : lookupCache(for: provider, source: selection.text)
+            let initialState: SegmentState
+            if let entry = cachedEntry {
+                initialState = .success(output: entry.output, latencyMs: nil, fromCache: true, cacheInfo: TranslationCache.CacheInfo(cachedAt: entry.createdAt, source: entry.source))
             } else {
-                state = .success(
-                    output: output,
-                    source: selection.text,
-                    model: configuration.textModel,
-                    mode: .text,
-                    cacheInfo: nil
-                )
-                // Skip caching when the model flagged the input as
-                // untranslatable, OR — defensively — when the model emitted
-                // a pure echo (case/whitespace-normalised result equals
-                // input). Both signal "no real translation happened" and
-                // caching them just pollutes the LRU.
-                if Self.shouldCacheTranslation(source: selection.text, output: output) {
-                    TranslationCache.shared.put(
-                        key: cacheKey,
-                        source: .ai,
-                        output: output,
-                        model: configuration.textModel,
-                        sourceText: selection.text
-                    )
-                } else {
-                    AppLogger.log("cache skipped: untranslatable=\(output.untranslatable) text='\(selection.text.prefix(40))'")
-                }
+                initialState = .loading
             }
-        } catch {
-            state = .failure(DisplayError(error))
+            let segment = ProviderSegment(
+                id: id,
+                displayName: provider.displayName,
+                modelHint: provider.modelHint,
+                state: initialState
+            )
+            if id.segmentKind == .ai {
+                aiSegment = segment
+            } else {
+                apiSegments.append(segment)
+            }
+        }
+
+        state = .text(TextSegments(
+            source: selection.text,
+            api: apiSegments,
+            ai: aiSegment,
+            bothDisabled: false
+        ))
+
+        // For each provider that wasn't a cache hit, kick off a Task. Each
+        // task updates its own segment in place; tasks are independent so
+        // a fast provider lands first even if a slow one is still running.
+        for provider in providers {
+            let segment = segment(for: provider.id)
+            if case .success(_, _, true, _) = segment?.state {
+                continue
+            }
+            let task: Task<Void, Never> = Task { [weak self] in
+                guard let self else { return }
+                await self.run(provider: provider, source: selection.text)
+            }
+            activeTextSegmentTasks.append(task)
         }
     }
 
@@ -90,27 +144,20 @@ final class TranslatorViewModel: ObservableObject {
         do {
             let service = TranslationService(configuration: configuration)
             let raw = try await service.streamTranslateScreenshot(capture.imageData) { [weak self] delta in
-                self?.append(delta: delta, mode: .screenshot, source: "截图翻译")
+                self?.appendScreenshotDelta(delta)
             }
             let output = TranslationOutputParser.parse(raw)
             let trimmed = output.result.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || Self.looksLikeNoTextFallback(trimmed) {
-                // Log a slice of the raw response so we can tell apart
-                // "model returned nothing" vs "model said it can't see text"
-                // vs "model emitted text without <atst-result> tags".
                 let preview = raw.replacingOccurrences(of: "\n", with: " ").prefix(300)
                 AppLogger.log("screenshot translation flagged as no-text. rawLen=\(raw.count) parsedLen=\(trimmed.count) screenshotPath=\(capture.savedPath) rawPreview=\(preview)")
                 state = .failure(DisplayError(AppError.noScreenshotText))
             } else {
                 AppLogger.log("screenshot translation ok parsedLen=\(trimmed.count) screenshotPath=\(capture.savedPath)")
-                // Screenshot results are intentionally not cached — each image
-                // is unique and would bloat the cache.
-                state = .success(
+                state = .screenshotSuccess(
                     output: output,
-                    source: "截图翻译",
-                    model: configuration.screenshotModel,
-                    mode: .screenshot,
-                    cacheInfo: nil
+                    source: L.pick("Screenshot translation", "截图翻译"),
+                    model: configuration.screenshotModel
                 )
             }
         } catch {
@@ -120,14 +167,6 @@ final class TranslatorViewModel: ObservableObject {
 
     func showError(_ error: Error) {
         state = .failure(DisplayError(error))
-    }
-
-    func copyResult() {
-        guard let text = state.copyableText else {
-            return
-        }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
     }
 
     func setTargetLanguage(_ language: String) {
@@ -141,21 +180,199 @@ final class TranslatorViewModel: ObservableObject {
         state = .idle
     }
 
-    private func append(delta: String, mode: TranslationMode, source: String) {
-        let current = state.streamingRaw ?? ""
+    // MARK: - Provider plumbing
+
+    /// Build the list of providers we should fan out to, honoring the AI/API
+    /// top-level toggles. AI is always included when `aiEnabled` is on —
+    /// even without a configured model — so the AI segment can surface a
+    /// "model not configured" error inline instead of silently disappearing.
+    /// API providers come from the user's enabled list in the order they're
+    /// defined in settings.
+    private func buildEnabledProviders() -> [TranslationProvider] {
+        var providers: [TranslationProvider] = []
+        if configuration.apiEnabled {
+            for kind in configuration.enabledAPIProviderKinds {
+                if let provider = makeProvider(for: kind) {
+                    providers.append(provider)
+                }
+            }
+        }
+        if configuration.aiEnabled {
+            providers.append(OpenAIProvider(configuration: configuration))
+        }
+        return providers
+    }
+
+    /// True only when the user has flipped both top-level switches off.
+    /// "AI on but no model" or "API on with all providers disabled" are
+    /// surfaced inline as segment errors / empty rows instead of via this
+    /// global empty-state path.
+    private var noTranslatorEnabled: Bool {
+        !configuration.aiEnabled && !configuration.apiEnabled
+    }
+
+    private func makeProvider(for kind: TranslationProviderID) -> TranslationProvider? {
+        switch kind {
+        case .ai:
+            return OpenAIProvider(configuration: configuration)
+        case .google:
+            return GoogleProvider(targetLanguage: configuration.targetLanguage)
+        case .microsoft:
+            return MicrosoftProvider(targetLanguage: configuration.targetLanguage)
+        }
+    }
+
+    /// Pre-flight placeholder segments used by `beginTextTranslation`. Mirrors
+    /// what `translateSelection` will seed once it has the selection, so the
+    /// hotkey-to-first-frame path doesn't flash an empty tooltip.
+    private func makePlaceholderSegments() -> (api: [ProviderSegment], ai: ProviderSegment?) {
+        var apiSegments: [ProviderSegment] = []
+        if configuration.apiEnabled {
+            for kind in configuration.enabledAPIProviderKinds {
+                let provider = makeProvider(for: kind)
+                apiSegments.append(ProviderSegment(
+                    id: kind,
+                    displayName: provider?.displayName ?? kind.rawValue,
+                    modelHint: provider?.modelHint,
+                    state: .loading
+                ))
+            }
+        }
+        var aiSegment: ProviderSegment? = nil
+        if configuration.aiEnabled {
+            let provider = OpenAIProvider(configuration: configuration)
+            aiSegment = ProviderSegment(
+                id: .ai,
+                displayName: provider.displayName,
+                modelHint: provider.modelHint,
+                state: .loading
+            )
+        }
+        return (apiSegments, aiSegment)
+    }
+
+    private func cancelActiveTextTasks() {
+        for task in activeTextSegmentTasks { task.cancel() }
+        activeTextSegmentTasks.removeAll()
+    }
+
+    /// Drive a single provider's translate() stream and patch the matching
+    /// segment in `state` on each emission / final / failure. Streaming
+    /// providers (AI) call this with many emissions; APIs call once.
+    private func run(provider: TranslationProvider, source: String) async {
+        let started = Date()
+        let cacheKey = cacheKey(for: provider, source: source)
+        do {
+            for try await emission in provider.translate(text: source) {
+                try Task.checkCancellation()
+                let latencyMs = Int(Date().timeIntervalSince(started) * 1000)
+                if emission.isFinal {
+                    updateSegment(id: provider.id) { segment in
+                        segment.state = .success(
+                            output: emission.output,
+                            latencyMs: latencyMs,
+                            fromCache: false,
+                            cacheInfo: nil
+                        )
+                    }
+                    // Cache only successful, non-untranslatable results that
+                    // actually produced content.
+                    if let key = cacheKey,
+                       Self.shouldCache(source: source, output: emission.output) {
+                        let cacheSource: TranslationCache.Source = provider.id.segmentKind == .ai ? .ai : .api
+                        TranslationCache.shared.put(
+                            key: key,
+                            source: cacheSource,
+                            output: emission.output,
+                            model: provider.modelHint ?? provider.displayName,
+                            sourceText: source
+                        )
+                    } else {
+                        AppLogger.log("cache skipped for \(provider.id.rawValue): untranslatable=\(emission.output.untranslatable)")
+                    }
+                } else {
+                    updateSegment(id: provider.id) { segment in
+                        segment.state = .streaming(raw: emission.raw, output: emission.output)
+                    }
+                }
+            }
+        } catch is CancellationError {
+            // Surface nothing — a newer translation has already replaced our
+            // segments; writing into a stale segment would race.
+        } catch {
+            updateSegment(id: provider.id) { segment in
+                segment.state = .failure(DisplayError(error))
+            }
+            AppLogger.log("provider \(provider.id.rawValue) failed: \(error)")
+        }
+    }
+
+    private func cacheKey(for provider: TranslationProvider, source: String) -> String? {
+        switch provider.id.segmentKind {
+        case .ai:
+            return TranslationCache.makeAIKey(text: source, configuration: configuration)
+        case .api:
+            return TranslationCache.makeProviderKey(
+                providerID: provider.id,
+                text: source,
+                targetLanguage: configuration.targetLanguage
+            )
+        }
+    }
+
+    private func lookupCache(for provider: TranslationProvider, source: String) -> TranslationCache.Entry? {
+        guard let key = cacheKey(for: provider, source: source) else { return nil }
+        return TranslationCache.shared.get(key: key)
+    }
+
+    private func segment(for id: TranslationProviderID) -> ProviderSegment? {
+        guard case .text(let segments) = state else { return nil }
+        if let api = segments.api.first(where: { $0.id == id }) { return api }
+        if segments.ai?.id == id { return segments.ai }
+        return nil
+    }
+
+    /// Mutate the segment matching `id` in place. No-op if the current state
+    /// isn't a text translation or no segment matches — covers the race
+    /// where a newer selection arrived between this task's await and now.
+    private func updateSegment(id: TranslationProviderID, mutate: (inout ProviderSegment) -> Void) {
+        guard case .text(var segments) = state else { return }
+        if let index = segments.api.firstIndex(where: { $0.id == id }) {
+            mutate(&segments.api[index])
+            state = .text(segments)
+            return
+        }
+        if var ai = segments.ai, ai.id == id {
+            mutate(&ai)
+            segments.ai = ai
+            state = .text(segments)
+        }
+    }
+
+    private func appendScreenshotDelta(_ delta: String) {
+        let current: String
+        if case .screenshotStreaming(let raw, _, _, _) = state {
+            current = raw
+        } else {
+            current = ""
+        }
         let updated = current + delta
         let output = TranslationOutputParser.parse(updated)
-        state = .streaming(raw: updated, output: output, model: model(for: mode), mode: mode, source: source)
+        state = .screenshotStreaming(
+            raw: updated,
+            output: output,
+            model: configuration.screenshotModel,
+            source: L.pick("Screenshot translation", "截图翻译")
+        )
     }
 
     /// Decide whether a successful translation should land in the local
     /// cache. Skip when:
-    ///   1. Model set `<atst-translatable>false</atst-translatable>` (or `0`) —
-    ///      it self-reported "this has no real translation".
-    ///   2. Model echoed the source unchanged (modulo case + whitespace) and
-    ///      didn't add description content. Defensive fallback in case the
-    ///      model forgot the explicit flag.
-    private static func shouldCacheTranslation(source: String, output: TranslationOutput) -> Bool {
+    ///   1. Provider tagged the input as untranslatable (model self-report
+    ///      for AI, source==result heuristic for API).
+    ///   2. Output echoed the source unchanged (modulo case + whitespace)
+    ///      with no extras — defensive fallback in case the flag was missed.
+    private static func shouldCache(source: String, output: TranslationOutput) -> Bool {
         if output.untranslatable { return false }
         guard let first = output.items.first else { return false }
         let normSource = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -183,102 +400,147 @@ final class TranslatorViewModel: ObservableObject {
         ]
         return needles.contains { collapsed.contains($0) }
     }
+}
 
-    private func model(for mode: TranslationMode) -> String {
-        switch mode {
-        case .text:
-            return configuration.textModel
-        case .screenshot:
-            return configuration.screenshotModel
+// MARK: - State model
+
+/// Top-level translation state — the single source of truth the tooltip and
+/// pinned-note logic observe.
+enum TranslationState: Equatable {
+    case idle
+    /// Text translation in flight or complete. Carries the per-segment
+    /// states (API rows + optional AI row). `bothDisabled == true` means
+    /// the user has neither AI nor API enabled; the UI renders an empty
+    /// state with a "Open settings" prompt.
+    case text(TextSegments)
+    case screenshotLoading(message: String, model: String, source: String)
+    case screenshotStreaming(raw: String, output: TranslationOutput, model: String, source: String)
+    case screenshotSuccess(output: TranslationOutput, source: String, model: String)
+    case failure(DisplayError)
+}
+
+/// Snapshot of all text segments for a single translation. Stored inside
+/// `TranslationState.text(...)`.
+struct TextSegments: Equatable {
+    var source: String
+    /// API provider rows, in user-configured order. Always rendered above
+    /// the AI row.
+    var api: [ProviderSegment]
+    /// Optional AI row (gpt-4o, claude, ollama, …).
+    var ai: ProviderSegment?
+    /// True iff both AI and API switches are off — UI shows an empty-state
+    /// "no provider enabled" prompt with a "Open settings" CTA.
+    var bothDisabled: Bool
+
+    var hasAnyContent: Bool {
+        if let ai = ai, ai.state.hasContent { return true }
+        return api.contains { $0.state.hasContent }
+    }
+
+    var hasAnyTerminalSuccess: Bool {
+        if let ai = ai, case .success = ai.state { return true }
+        return api.contains { if case .success = $0.state { return true } else { return false } }
+    }
+
+    var allSegments: [ProviderSegment] {
+        if let ai = ai { return api + [ai] }
+        return api
+    }
+}
+
+/// Per-provider segment carrying everything the UI needs to render one row.
+struct ProviderSegment: Equatable, Identifiable {
+    let id: TranslationProviderID
+    let displayName: String
+    let modelHint: String?
+    var state: SegmentState
+}
+
+/// Per-segment lifecycle state. AI hits `.streaming(...)` between `.loading`
+/// and `.success`; API providers go straight from `.loading` to `.success`
+/// or `.failure`.
+enum SegmentState: Equatable {
+    case loading
+    case streaming(raw: String, output: TranslationOutput)
+    case success(output: TranslationOutput, latencyMs: Int?, fromCache: Bool, cacheInfo: TranslationCache.CacheInfo?)
+    case failure(DisplayError)
+
+    var hasContent: Bool {
+        switch self {
+        case .streaming(_, let output): return !output.items.isEmpty
+        case .success(let output, _, _, _): return !output.items.isEmpty
+        case .loading, .failure: return false
+        }
+    }
+
+    /// `TranslationOutput` derived from this state for read-only display.
+    var output: TranslationOutput {
+        switch self {
+        case .streaming(_, let output): return output
+        case .success(let output, _, _, _): return output
+        case .loading, .failure: return .empty
         }
     }
 }
 
-enum TranslationState: Equatable {
-    case idle
-    case loading(message: String, model: String, mode: TranslationMode, source: String)
-    case streaming(raw: String, output: TranslationOutput, model: String, mode: TranslationMode, source: String)
-    case success(output: TranslationOutput, source: String, model: String, mode: TranslationMode, cacheInfo: TranslationCache.CacheInfo?)
-    case failure(DisplayError)
-
+extension TranslationState {
+    /// Convenience: which segment currently makes the most sense to copy
+    /// when the user uses a global "copy" shortcut. Returns the AI result
+    /// when available, otherwise the first successful API segment.
     var copyableText: String? {
         switch self {
-        case .streaming(_, let output, _, _, _):
+        case .text(let segments):
+            if let ai = segments.ai, case .success(let output, _, _, _) = ai.state {
+                return output.result.isEmpty ? nil : output.result
+            }
+            for segment in segments.api {
+                if case .success(let output, _, _, _) = segment.state, !output.result.isEmpty {
+                    return output.result
+                }
+            }
+            return nil
+        case .screenshotStreaming(_, let output, _, _):
             return output.result.isEmpty ? nil : output.result
-        case .success(let output, _, _, _, _):
+        case .screenshotSuccess(let output, _, _):
             return output.result
-        case .idle, .loading, .failure:
+        case .idle, .screenshotLoading, .failure:
             return nil
         }
-    }
-
-    var streamingRaw: String? {
-        if case .streaming(let raw, _, _, _, _) = self {
-            return raw
-        }
-        return nil
     }
 
     var sourceText: String {
         switch self {
-        case .loading(_, _, _, let source):
+        case .text(let segments): return segments.source
+        case .screenshotLoading(_, _, let source),
+             .screenshotStreaming(_, _, _, let source),
+             .screenshotSuccess(_, let source, _):
             return source
-        case .streaming(_, _, _, _, let source):
-            return source
-        case .success(_, let source, _, _, _):
-            return source
-        case .idle, .failure:
-            return ""
+        case .idle, .failure: return ""
         }
     }
 
+    /// Convenience accessor for the live-tooltip auto-expand logic and the
+    /// pin-as-note snapshot path. Returns the AI segment's output if it
+    /// exists, falling back to the first successful API segment.
     var currentOutput: TranslationOutput {
         switch self {
-        case .streaming(_, let output, _, _, _):
+        case .text(let segments):
+            if let ai = segments.ai {
+                let output = ai.state.output
+                if !output.items.isEmpty { return output }
+            }
+            for segment in segments.api {
+                let output = segment.state.output
+                if !output.items.isEmpty { return output }
+            }
+            return .empty
+        case .screenshotStreaming(_, let output, _, _),
+             .screenshotSuccess(let output, _, _):
             return output
-        case .success(let output, _, _, _, _):
-            return output
-        case .idle, .loading, .failure:
+        case .idle, .screenshotLoading, .failure:
             return .empty
         }
     }
-
-    var activeModel: String? {
-        switch self {
-        case .loading(_, let model, _, _),
-             .streaming(_, _, let model, _, _),
-             .success(_, _, let model, _, _):
-            return model
-        case .idle, .failure:
-            return nil
-        }
-    }
-
-    var activeMode: TranslationMode? {
-        switch self {
-        case .loading(_, _, let mode, _),
-             .streaming(_, _, _, let mode, _),
-             .success(_, _, _, let mode, _):
-            return mode
-        case .idle, .failure:
-            return nil
-        }
-    }
-
-    /// `CacheInfo` present iff the success came from the local cache instead
-    /// of a fresh AI call. Used by the UI to render a "cached • click to
-    /// refresh" indicator.
-    var cacheInfo: TranslationCache.CacheInfo? {
-        if case .success(_, _, _, _, let info) = self {
-            return info
-        }
-        return nil
-    }
-}
-
-enum TranslationMode: Equatable {
-    case text
-    case screenshot
 }
 
 struct DisplayError: Equatable {

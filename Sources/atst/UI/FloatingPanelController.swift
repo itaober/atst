@@ -7,6 +7,7 @@ import SwiftUI
 final class FloatingPanelController {
     private let viewModel: TranslatorViewModel
     private let onRefresh: (String) -> Void
+    private let onOpenSettings: () -> Void
 
     private lazy var hostingController: NSHostingController<TranslationResultView> = makeHostingController()
     private lazy var panel: NSPanel = makePanel()
@@ -24,10 +25,12 @@ final class FloatingPanelController {
 
     init(
         viewModel: TranslatorViewModel,
-        onRefresh: @escaping (String) -> Void = { _ in }
+        onRefresh: @escaping (String) -> Void = { _ in },
+        onOpenSettings: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.onRefresh = onRefresh
+        self.onOpenSettings = onOpenSettings
         spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil,
@@ -106,32 +109,11 @@ final class FloatingPanelController {
             viewModel.pinned = false
             return
         }
-        let output = viewModel.state.currentOutput
-        guard !output.result.isEmpty else {
-            // Nothing to pin yet (still loading); back out gracefully.
+
+        guard let snapshot = makePinnedSnapshot() else {
             viewModel.pinned = false
             return
         }
-
-        // Match TranslationResultView's auto-expand rule: when the source
-        // has no real translation, the <atst-desc> block IS the useful
-        // payload, so the pinned note should start with it open even if
-        // the user's general "expand by default" preference is off.
-        let autoExpand = output.untranslatable
-            && viewModel.configuration.smartExplanationEnabled
-            && output.hasDescription
-        let initiallyExpanded = autoExpand
-            ? true
-            : viewModel.configuration.smartExplanationExpandedByDefault
-
-        let snapshot = PinnedNoteSnapshot(
-            modelTitle: viewModel.state.activeModel ?? Branding.appName,
-            sourceText: viewModel.state.sourceText,
-            output: output,
-            phoneticEnabled: viewModel.configuration.phoneticEnabled,
-            smartExplanationEnabled: viewModel.configuration.smartExplanationEnabled,
-            initiallyExpanded: initiallyExpanded
-        )
 
         let originTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
         let note = PinnedNoteController(snapshot: snapshot)
@@ -145,6 +127,56 @@ final class FloatingPanelController {
         close()
     }
 
+    /// Capture the current dual-segment state into a `PinnedNoteSnapshot`.
+    /// Returns nil when there's nothing meaningful to pin (still loading /
+    /// no content / screenshot mode without items).
+    private func makePinnedSnapshot() -> PinnedNoteSnapshot? {
+        switch viewModel.state {
+        case .text(let segments):
+            guard segments.hasAnyContent else { return nil }
+            // Pinned notes mirror the live tooltip's auto-expand rule for
+            // untranslatable inputs: the <atst-desc> block becomes the
+            // useful payload, so we should pop it open even if the user's
+            // general "expand by default" preference is off.
+            let aiOutput = segments.ai?.state.output
+            let autoExpand = (aiOutput?.untranslatable ?? false)
+                && viewModel.configuration.smartExplanationEnabled
+                && (aiOutput?.hasDescription ?? false)
+            let initiallyExpanded = autoExpand
+                ? true
+                : viewModel.configuration.smartExplanationExpandedByDefault
+            return PinnedNoteSnapshot(
+                sourceText: segments.source,
+                apiSegments: segments.api,
+                aiSegment: segments.ai,
+                phoneticEnabled: viewModel.configuration.phoneticEnabled,
+                smartExplanationEnabled: viewModel.configuration.smartExplanationEnabled,
+                initiallyExpanded: initiallyExpanded
+            )
+        case .screenshotSuccess(let output, let source, let model),
+             .screenshotStreaming(_, let output, let model, let source):
+            guard !output.items.isEmpty else { return nil }
+            // Screenshot pins reuse the dual-section data shape but with
+            // only an AI segment (no API providers ever run on screenshots).
+            let ai = ProviderSegment(
+                id: .ai,
+                displayName: model,
+                modelHint: model,
+                state: .success(output: output, latencyMs: nil, fromCache: false, cacheInfo: nil)
+            )
+            return PinnedNoteSnapshot(
+                sourceText: source,
+                apiSegments: [],
+                aiSegment: ai,
+                phoneticEnabled: viewModel.configuration.phoneticEnabled,
+                smartExplanationEnabled: viewModel.configuration.smartExplanationEnabled,
+                initiallyExpanded: viewModel.configuration.smartExplanationExpandedByDefault
+            )
+        case .idle, .screenshotLoading, .failure:
+            return nil
+        }
+    }
+
     // MARK: - Dismissal monitors
 
     private func startDismissalMonitors() {
@@ -154,8 +186,6 @@ final class FloatingPanelController {
         }
         outsideClickLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self else { return event }
-            // Clicks on the active panel keep it open; clicks on a pinned
-            // note also pass through (they're independent windows).
             if event.window === self.panel { return event }
             if self.noteControllers.contains(where: { $0.owns(event.window) }) { return event }
             self.close()
@@ -181,10 +211,6 @@ final class FloatingPanelController {
 
     // MARK: - Sizing
 
-    /// SwiftUI's `readSize` modifier in `TranslationResultView` drives the
-    /// per-frame panel size at runtime. We still call this once on `show()`
-    /// so the panel has a sensible initial frame before SwiftUI's first
-    /// layout pass has run.
     private func ensureSized() {
         hostingController.view.layoutSubtreeIfNeeded()
         let fitting = hostingController.view.fittingSize
@@ -217,13 +243,13 @@ final class FloatingPanelController {
             },
             onRefresh: { [weak self] sourceText in
                 self?.onRefresh(sourceText)
+            },
+            onOpenSettings: { [weak self] in
+                self?.close()
+                self?.onOpenSettings()
             }
         )
         let controller = NSHostingController(rootView: view)
-        // Drive tooltip sizing from TranslationResultView.readSize instead of
-        // NSHostingController's preferredContentSize bridge. The bridge may
-        // coalesce layout-animation frames; direct SwiftUI size reports keep
-        // the panel's top-left anchored frame in phase with the section height.
         controller.sizingOptions = []
         controller.view.wantsLayer = true
         controller.view.layer?.backgroundColor = NSColor.clear.cgColor
@@ -232,7 +258,7 @@ final class FloatingPanelController {
 
     private func makePanel() -> NSPanel {
         let panel = TooltipPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 260, height: 80),
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 80),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -292,11 +318,9 @@ enum FloatingPanelAnchor {
     case rect(NSRect)
 }
 
-/// The expand / collapse animation is owned entirely by SwiftUI
-/// (`CollapsibleSection` interpolates its frame height from 0 to the measured
-/// height). NSHostingController publishes that per-frame size, and this
-/// panel just follows instantly with a top-left anchor — no AppKit animation
-/// clock to fight against. Result: one driver, smooth drawer feel.
+/// The expand / collapse animation is owned entirely by SwiftUI. AppKit just
+/// follows instantly with a top-left anchor — no AppKit animation clock to
+/// fight against. Result: one driver, smooth drawer feel.
 private final class TooltipPanel: NSPanel {
     override func setContentSize(_ newSize: NSSize) {
         let currentFrame = frame
@@ -335,7 +359,7 @@ private final class PinnedNoteController {
         self.hostingController = host
 
         let panel = TooltipPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 100),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -352,8 +376,6 @@ private final class PinnedNoteController {
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         panel.isReleasedWhenClosed = false
-        // Notes are draggable from any blank spot — that's the whole point
-        // of "pinning": you place it where you want.
         panel.isMovable = true
         panel.isMovableByWindowBackground = true
         self.panel = panel

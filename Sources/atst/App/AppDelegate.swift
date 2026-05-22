@@ -10,6 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel: viewModel,
         onRefresh: { [weak self] sourceText in
             self?.refreshTranslation(sourceText: sourceText)
+        },
+        onOpenSettings: { [weak self] in
+            self?.statusBarController.openSettings()
         }
     )
     private lazy var statusBarController = StatusBarController(
@@ -41,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureHotKeys(settingsStore.configuration)
         ensureHotKeyMonitorRunning(prompt: true)
         startAccessibilityWatch()
-        OpenAICompatibleClient.prewarm(configuration: settingsStore.configuration)
+        prewarmAllProviders(settingsStore.configuration)
         startPrewarmTimer()
         applyCacheSettings(settingsStore.configuration)
 
@@ -52,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.ensureHotKeyMonitorRunning(prompt: false)
                 self?.applyAppearance(configuration.appearanceMode)
                 self?.applyCacheSettings(configuration)
-                OpenAICompatibleClient.prewarm(configuration: configuration)
+                self?.prewarmAllProviders(configuration)
             }
             .store(in: &cancellables)
     }
@@ -65,15 +68,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    /// Prewarm every enabled provider's underlying HTTP host. Each one
+    /// dedupes pooled URLSession connections on its own, so calling more
+    /// than we need is cheap. Disabled providers are skipped to avoid
+    /// pinging hosts the user doesn't want contacted.
+    private func prewarmAllProviders(_ configuration: AppConfiguration) {
+        if configuration.aiEnabled {
+            OpenAICompatibleClient.prewarm(configuration: configuration)
+        }
+        if configuration.apiEnabled {
+            for kind in configuration.enabledAPIProviderKinds {
+                switch kind {
+                case .google:
+                    GoogleProvider.prewarm()
+                case .microsoft:
+                    MicrosoftProvider.prewarm()
+                case .ai:
+                    break
+                }
+            }
+        }
+    }
+
     private var prewarmTimer: Timer?
     private func startPrewarmTimer() {
         prewarmTimer?.invalidate()
-        // Refresh the pooled connection every 4 minutes (well under most
-        // server-side idle timeouts) so it stays hot.
+        // Refresh pooled connections every 4 minutes (well under most
+        // server-side idle timeouts) so they stay hot.
         let timer = Timer.scheduledTimer(withTimeInterval: 240, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                OpenAICompatibleClient.prewarm(configuration: self.settingsStore.configuration)
+                self.prewarmAllProviders(self.settingsStore.configuration)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -104,9 +129,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func translateSelection() {
         AppLogger.log("translateSelection invoked")
-        // If an older translation is still in flight, cancel it — we always
-        // want the freshest selection to win, not whichever request happens
-        // to come back last.
         currentTranslationTask?.cancel()
         currentScreenshotTask?.cancel()
         let task = Task { [weak self] in
@@ -166,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Triggered when the user clicks the "cached — refresh" affordance in
     /// the tooltip header. Skips pasteboard capture (we already have the
-    /// source text) and forces a fresh AI call by bypassing the cache.
+    /// source text) and forces fresh provider calls by bypassing the cache.
     private func refreshTranslation(sourceText: String) {
         let trimmed = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

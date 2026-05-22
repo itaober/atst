@@ -47,6 +47,14 @@ final class StatusBarController: NSObject {
         }
     }
 
+    /// Public entry point — used by the floating tooltip's "Open Settings"
+    /// empty-state CTA so the user can flip a translator on without hunting
+    /// for the menu bar.
+    func openSettings() {
+        if let panel, panel.isVisible { return }
+        open()
+    }
+
     private func open() {
         let panel = panel ?? makePanel()
         self.panel = panel

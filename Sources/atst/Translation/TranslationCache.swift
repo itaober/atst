@@ -2,14 +2,24 @@ import Foundation
 
 /// Local persistent cache for successful text translations.
 ///
-/// - Key = `model | targetLanguage | phoneticEnabled | smartExplanationEnabled | normalize(sourceText)`
-///   where `normalize` = trim + lowercase, so casing and stray whitespace
-///   don't fragment the cache.
-/// - TTL: 90 days. Entries older than that are treated as misses (and pruned).
-/// - LRU capped at `maxEntries` (2000); least-recently-used entries evict.
+/// Cache schema v2 (P7): each translation segment (AI + every enabled API
+/// provider) is cached under its own key, so changing the AI prompt
+/// settings doesn't invalidate Google's cached entry and vice versa.
+///
+/// Key formats (all colon-pipe joined):
+///   - AI  segment: `v2|ai|<model>|<targetLang>|p<0/1>|e<0/1>|<normalized text>`
+///   - API segment: `v2|<providerId>|<targetLang>|<normalized text>`
+///
+/// `normalize` = trim + lowercase, so casing and stray whitespace don't
+/// fragment the cache.
+///
+/// - TTL: configurable (default 90 days). Entries older than that are
+///   treated as misses (and pruned).
+/// - LRU capped at `maxEntries` (default 2000); least-recently-used entries
+///   evict.
 /// - Persisted as a single JSON file under `~/Library/Caches/dev.local.atst/`.
-///   `Caches/` semantics mean macOS may purge the file if disk is low — fine,
-///   we treat the cache as best-effort.
+///   `Caches/` semantics mean macOS may purge the file if disk is low —
+///   fine, we treat the cache as best-effort.
 /// - Writes are debounced (1s) and performed off-main; reads stay on main.
 ///
 /// Note: screenshot translations are intentionally *not* cached — each
@@ -19,7 +29,10 @@ final class TranslationCache: ObservableObject {
     static let shared = TranslationCache()
 
     enum Source: String, Codable, Equatable {
+        /// Cache came from an AI (LLM) translation segment.
         case ai
+        /// Cache came from an API (Google / Microsoft / future custom)
+        /// translation segment.
         case api
     }
 
@@ -40,22 +53,15 @@ final class TranslationCache: ObservableObject {
 
     /// Number of cached entries that came from an AI (LLM) translation.
     @Published private(set) var aiCount: Int = 0
-    /// Number of cached entries that came from a non-LLM translation API.
-    /// Always 0 today — placeholder for a future traditional API integration.
+    /// Number of cached entries that came from a non-LLM translation API
+    /// (Google / Microsoft / future custom).
     @Published private(set) var apiCount: Int = 0
     /// Approximate persisted size in bytes (JSON-encoded snapshot).
     @Published private(set) var totalBytes: Int = 0
 
     private var entries: [String: Entry] = [:]
-    /// Driven by `AppConfiguration.cacheEnabled` via `configure(...)` — when
-    /// false, `get` always misses and `put` is a no-op, but persisted entries
-    /// stay on disk so toggling back on restores them.
     private var enabled: Bool = true
-    /// Upper bound on live entries. LRU drives eviction. Driven from
-    /// `AppConfiguration.cacheMaxEntries` via `configure(...)`.
     private var maxEntries: Int = 2000
-    /// Time-to-live for an entry; expired entries are dropped on read and on
-    /// load. Driven from `AppConfiguration.cacheTTLDays` via `configure(...)`.
     private var ttl: TimeInterval = 90 * 24 * 3600
     private let storageURL: URL
     private var saveDebounceTask: Task<Void, Never>?
@@ -68,6 +74,10 @@ final class TranslationCache: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         storageURL = dir.appendingPathComponent("translations.json")
         loadFromDisk()
+        // v2 cache key format ships in P7. Old v1 entries can't satisfy v2
+        // lookups, so they just gather TTL dust without harming anything —
+        // we sweep them on first launch to keep stats honest.
+        purgeLegacyEntries()
     }
 
     // MARK: - External configuration
@@ -84,7 +94,6 @@ final class TranslationCache: ObservableObject {
         self.ttl = TimeInterval(cleanTTLDays) * 24 * 3600
         self.maxEntries = cleanMax
         if ttlChanged {
-            // Newly-shortened TTL may make existing entries expire — prune now.
             pruneExpired()
         }
         if maxChanged {
@@ -97,20 +106,46 @@ final class TranslationCache: ObservableObject {
         AppLogger.log("cache configured enabled=\(enabled) ttlDays=\(cleanTTLDays) maxEntries=\(cleanMax)")
     }
 
-    // MARK: - Key
+    // MARK: - Keys
+    //
+    // P7 splits the single legacy AI key into per-segment keys so AI and
+    // each API provider live in independent cache slots. The composition is
+    // intentionally provider-aware: AI keys include model + phonetic +
+    // explanation toggles (changing those should re-translate); API keys
+    // only need provider + target + text (no toggles apply).
 
-    static func makeKey(text: String, configuration: AppConfiguration) -> String {
-        let normalized = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+    /// Cache key for the AI segment. Includes the toggles that change AI
+    /// behaviour so flipping them invalidates the cached output.
+    static func makeAIKey(text: String, configuration: AppConfiguration) -> String {
+        let normalized = normalize(text)
         return [
-            "v1",   // schema version — bump if Entry shape changes
+            "v2",
+            "ai",
             configuration.textModel,
             configuration.targetLanguage,
             configuration.phoneticEnabled ? "p1" : "p0",
             configuration.smartExplanationEnabled ? "e1" : "e0",
             normalized
         ].joined(separator: "|")
+    }
+
+    /// Cache key for a single API provider segment.
+    static func makeProviderKey(
+        providerID: TranslationProviderID,
+        text: String,
+        targetLanguage: String
+    ) -> String {
+        let normalized = normalize(text)
+        return [
+            "v2",
+            providerID.rawValue,
+            targetLanguage,
+            normalized
+        ].joined(separator: "|")
+    }
+
+    private static func normalize(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     // MARK: - Read / write
@@ -179,8 +214,6 @@ final class TranslationCache: ObservableObject {
         }
     }
 
-    /// Drop entries older than the current TTL. Called after the user
-    /// shortens `cacheTTLDays` so stale entries don't linger in stats.
     private func pruneExpired() {
         let now = Date()
         let before = entries.count
@@ -188,6 +221,20 @@ final class TranslationCache: ObservableObject {
         let pruned = before - entries.count
         if pruned > 0 {
             AppLogger.log("cache pruned-expired count=\(pruned)")
+        }
+    }
+
+    /// Sweep entries whose key uses the legacy `v1|…` schema. They became
+    /// unreachable when P7 moved keys to `v2|…` and would otherwise sit on
+    /// disk for the full TTL.
+    private func purgeLegacyEntries() {
+        let before = entries.count
+        entries = entries.filter { !$0.key.hasPrefix("v1|") }
+        let removed = before - entries.count
+        if removed > 0 {
+            AppLogger.log("cache purged legacy v1 entries count=\(removed)")
+            updateStats()
+            scheduleSave()
         }
     }
 

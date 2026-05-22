@@ -122,26 +122,46 @@ enum TooltipMarkdown {
 
 /// Indented explanation block with an accent-coloured leading bar.
 /// Shared between live tooltip and pinned notes so the look stays in sync.
+/// Generous line spacing keeps multi-line descriptions from feeling cramped;
+/// the leading bar runs the full height of the rendered text.
 struct TooltipDescription: View {
     let markdown: String
 
     var body: some View {
-        Text(TooltipMarkdown.render(markdown))
+        // Collapse the model's `\n\n` paragraph breaks to single newlines —
+        // SwiftUI's markdown renderer turns each blank line into a hefty
+        // paragraph gap that looks airy inside a small tooltip section.
+        // After the collapse `lineSpacing(2)` still gives readable
+        // multi-line copy without the "balloon" feel.
+        Text(TooltipMarkdown.render(compactedMarkdown))
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
+            .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 6)
             .padding(.leading, 10)
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
                     .fill(Color.accentColor.opacity(0.45))
                     .frame(width: 2)
-                    .padding(.top, 8)
             }
     }
+
+    /// Squeeze runs of 2+ newlines down to a single newline so the rendered
+    /// markdown doesn't leave a tall blank line between a bold header (e.g.
+    /// `**💡 解释**`) and its body paragraph.
+    private var compactedMarkdown: String {
+        markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\n{2,}", with: "\n", options: .regularExpression)
+    }
 }
+
+// (BouncingDots removed — at the small sizes that fit the tooltip, the
+// dots' bounce was barely visible and the implementation looked broken on
+// screen. We fall back to plain `ProgressView` spinners for every loading
+// state; the spinner already conveys "in flight" the conventional way.)
 
 // MARK: - Speech
 

@@ -1,6 +1,8 @@
 import SwiftUI
 
 private enum SettingsRoute: Hashable {
+    case aiPage
+    case apiPage
     case translationPrompts
 }
 
@@ -9,6 +11,11 @@ private enum ShortcutTarget: Equatable {
     case screenshot
 }
 
+/// Top-level settings shell. The root page is now the "General" / common
+/// configuration page (target language, hotkeys, cache, stats, permissions,
+/// appearance) plus nav rows into the AI and API subpages. Each subpage is
+/// rendered inline by route-switching the body — keeps the panel's NSPanel
+/// the same width across navigation.
 struct MenuBarSettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
     @ObservedObject var cache: TranslationCache = .shared
@@ -24,9 +31,9 @@ struct MenuBarSettingsView: View {
     @State private var shortcutMonitor: Any?
     @State private var permissionPollTask: Task<Void, Never>?
     @State private var saveDebounceTask: Task<Void, Never>?
-    @State private var route: SettingsRoute? = nil
+    @State private var routeStack: [SettingsRoute] = []
 
-    private let panelWidth: CGFloat = 340
+    private let panelWidth: CGFloat = 360
 
     init(
         settingsStore: SettingsStore,
@@ -46,10 +53,20 @@ struct MenuBarSettingsView: View {
             header
             Divider()
             Group {
-                if route == .translationPrompts {
-                    SettingsPromptsPage(draft: $draft, save: save)
-                } else {
+                switch currentRoute {
+                case .none:
                     rootPage
+                case .aiPage:
+                    SettingsAIPage(
+                        draft: $draft,
+                        save: save,
+                        debouncedSave: debouncedSave,
+                        openPromptsPage: { routeStack.append(.translationPrompts) }
+                    )
+                case .apiPage:
+                    SettingsAPIPage(draft: $draft, save: save)
+                case .translationPrompts:
+                    SettingsPromptsPage(draft: $draft, save: save)
                 }
             }
             Divider()
@@ -71,13 +88,15 @@ struct MenuBarSettingsView: View {
         }
     }
 
+    private var currentRoute: SettingsRoute? { routeStack.last }
+
     // MARK: - Header / Footer
 
     private var header: some View {
         HStack(spacing: 10) {
-            if route != nil {
+            if !routeStack.isEmpty {
                 Button {
-                    route = nil
+                    _ = routeStack.popLast()
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
@@ -96,7 +115,7 @@ struct MenuBarSettingsView: View {
 
             Spacer()
 
-            if route == nil {
+            if routeStack.isEmpty {
                 Button(action: onQuit) {
                     Image(systemName: "power")
                         .font(.system(size: 12, weight: .medium))
@@ -113,8 +132,10 @@ struct MenuBarSettingsView: View {
     }
 
     private var headerTitle: String {
-        switch route {
+        switch currentRoute {
         case .none: return Branding.appName
+        case .aiPage: return L.pick("AI Translation", "AI 翻译")
+        case .apiPage: return L.pick("API Translation", "API 翻译")
         case .translationPrompts: return L.pick("Translation Prompts", "翻译提示词")
         }
     }
@@ -158,35 +179,114 @@ struct MenuBarSettingsView: View {
         return f
     }()
 
-    // MARK: - Root page
+    // MARK: - Root (general) page
 
     private var rootPage: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 permissionsSection
                 generalSection
-                aiTranslationSection
+                translatorNavSection
                 hotkeysSection
-                phoneticSection
-                smartExplanationSection
                 cacheSection
                 statsSection
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
         }
-        .frame(maxHeight: 500)
+        .frame(maxHeight: 540)
     }
 
-    // MARK: - Cache
+    /// AI/API entry rows shown on the General page. Each row carries its
+    /// enable toggle inline (so the user can flip a segment on/off without
+    /// drilling in) plus a chevron to push the detail subpage.
+    private var translatorNavSection: some View {
+        SettingsSection(title: L.pick("Translators", "翻译方式")) {
+            translatorNavRow(
+                title: L.pick("AI Translation", "AI 翻译"),
+                subtitle: aiSubtitle,
+                isOn: $draft.aiEnabled,
+                onTap: { routeStack.append(.aiPage) }
+            )
+            Divider().padding(.horizontal, 10)
+            translatorNavRow(
+                title: L.pick("API Translation", "API 翻译"),
+                subtitle: apiSubtitle,
+                isOn: $draft.apiEnabled,
+                onTap: { routeStack.append(.apiPage) }
+            )
+        }
+    }
+
+    private var aiSubtitle: String {
+        let trimmed = draft.textModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return L.pick("Model not configured", "尚未配置模型")
+        }
+        return trimmed
+    }
+
+    private var apiSubtitle: String {
+        let enabled = draft.apiProviders.filter(\.enabled).compactMap { entry -> String? in
+            switch entry.kind {
+            case .google: return "Google"
+            case .microsoft: return "Microsoft"
+            case .ai, .none: return nil
+            }
+        }
+        if enabled.isEmpty {
+            return L.pick("No providers enabled", "未启用任何 provider")
+        }
+        return enabled.joined(separator: " · ")
+    }
+
+    private func translatorNavRow(
+        title: String,
+        subtitle: String,
+        isOn: Binding<Bool>,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 4)
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+                .onChange(of: isOn.wrappedValue) { _ in save() }
+            Button(action: onTap) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
+    }
+
+    // MARK: - Cache section
 
     private var cacheSection: some View {
         SettingsSection(title: L.pick("Cache", "缓存")) {
             SettingsToggleRow(
                 title: L.pick("Enable cache", "开启缓存"),
                 subtitle: L.pick(
-                    "Save successful translations locally; identical lookups skip the AI call.",
-                    "本地保存翻译结果；下次相同查询不再请求 AI。"
+                    "Save successful translations locally; identical lookups skip the network call.",
+                    "本地保存翻译结果；下次相同查询不再请求接口。"
                 ),
                 isOn: $draft.cacheEnabled,
                 onChange: save
@@ -249,8 +349,6 @@ struct MenuBarSettingsView: View {
         .padding(.vertical, 7)
     }
 
-    // MARK: - Stats
-
     private var statsSection: some View {
         SettingsSection(title: L.pick("Stats", "统计")) {
             HStack(spacing: 12) {
@@ -289,7 +387,7 @@ struct MenuBarSettingsView: View {
         return f
     }()
 
-    // MARK: - Sections
+    // MARK: - Other sections (Permissions / General / Hotkeys)
 
     private var permissionsSection: some View {
         SettingsSection(title: L.pick("Permissions", "权限")) {
@@ -333,88 +431,10 @@ struct MenuBarSettingsView: View {
         }
     }
 
-    private var aiTranslationSection: some View {
-        SettingsSection(title: L.pick("AI Translation", "AI 翻译")) {
-            SettingsTextRow(
-                title: "Base URL",
-                text: $draft.baseURL,
-                placeholder: "http://localhost:11434/v1",
-                onChange: debouncedSave
-            )
-            SettingsSecureRow(
-                title: L.pick("API Key (stored locally)", "API Key（本地保存）"),
-                text: $draft.apiKey,
-                placeholder: L.pick("Optional", "可留空"),
-                onChange: debouncedSave
-            )
-            SettingsTextRow(
-                title: L.pick("Translation Model", "翻译模型"),
-                text: $draft.textModel,
-                placeholder: "text model",
-                onChange: debouncedSave
-            )
-            SettingsTextRow(
-                title: L.pick("Screenshot Model", "截图模型"),
-                text: $draft.screenshotModel,
-                placeholder: "vision model",
-                onChange: debouncedSave
-            )
-            SettingsNavRow(
-                title: L.pick("Translation Prompts", "翻译提示词"),
-                subtitle: L.pick(
-                    "System prompt and smart-explanation prompt",
-                    "系统提示词与智能注释提示词"
-                )
-            ) {
-                route = .translationPrompts
-            }
-        }
-    }
-
     private var hotkeysSection: some View {
         SettingsSection(title: L.pick("Hotkeys", "快捷键")) {
             shortcutRow(L.pick("Selection translation", "划词翻译"), shortcut: $draft.textHotKey, target: .text)
             shortcutRow(L.pick("Screenshot translation", "截图翻译"), shortcut: $draft.screenshotHotKey, target: .screenshot)
-        }
-    }
-
-    private var phoneticSection: some View {
-        SettingsSection(title: L.pick("Phonetic", "音标")) {
-            SettingsToggleRow(
-                title: L.pick("Enable phonetic", "启用音标"),
-                subtitle: L.pick(
-                    "Append IPA to word translations; tap to play",
-                    "单词翻译追加 IPA，点击朗读原文"
-                ),
-                isOn: $draft.phoneticEnabled,
-                onChange: save
-            )
-        }
-    }
-
-    private var smartExplanationSection: some View {
-        SettingsSection(title: L.pick("Smart Explanation", "智能注释")) {
-            SettingsToggleRow(
-                title: L.pick("Enable smart explanation", "启用智能注释"),
-                subtitle: L.pick(
-                    "Dictionary entry for words; idiom / term notes for sentences",
-                    "单词给词典释义；句子识别习语 / 术语"
-                ),
-                isOn: $draft.smartExplanationEnabled,
-                onChange: save
-            )
-            Divider().padding(.horizontal, 10)
-            SettingsToggleRow(
-                title: L.pick("Expand by default", "释义默认展开"),
-                subtitle: L.pick(
-                    "Open the explanation when the tooltip first appears",
-                    "弹层出现时直接展开智能注释"
-                ),
-                isOn: $draft.smartExplanationExpandedByDefault,
-                onChange: save
-            )
-            .opacity(draft.smartExplanationEnabled ? 1 : 0.4)
-            .disabled(!draft.smartExplanationEnabled)
         }
     }
 
@@ -447,11 +467,6 @@ struct MenuBarSettingsView: View {
     }
 
     // MARK: - Hotkey recording
-    //
-    // The shortcut row is more tightly coupled to view-local state
-    // (`recordingTarget`, NSEvent monitor lifetime, draft mutation) than
-    // the other rows, so it stays inline rather than getting extracted to
-    // SettingsComponents.
 
     private func shortcutRow(
         _ title: String,
@@ -493,7 +508,6 @@ struct MenuBarSettingsView: View {
         recordingTarget = target
         stopShortcutMonitorOnly()
         shortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // 53 = Escape: cancel recording without saving.
             if event.keyCode == 53 {
                 self.recordingTarget = nil
                 self.stopShortcutMonitorOnly()
@@ -572,6 +586,9 @@ struct MenuBarSettingsView: View {
         draft.smartExplanationPrompt = defaults.smartExplanationPrompt
         draft.textHotKey = .defaultText
         draft.screenshotHotKey = .defaultScreenshot
+        draft.aiEnabled = defaults.aiEnabled
+        draft.apiEnabled = defaults.apiEnabled
+        draft.apiProviders = defaults.apiProviders
         save()
     }
 }
