@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+*.swp
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+*.xcodeproj/
+*.xcworkspace/
+
+# Generated icon assets — produced from Resources/AppIconSource.png by
+# Scripts/generate-icons.swift on every build, so we keep only the source.
+Resources/AppIcon.icns
+Resources/AppIcon.iconset/
+Resources/AppIcon-preview.png
+Resources/MenuBarIcon.png
+
+# Runtime logs / app caches (handy locally, never useful in version control)
+/tmp/atst.log
+/tmp/atst-last-screenshot.png
