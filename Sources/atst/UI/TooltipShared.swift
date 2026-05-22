@@ -31,6 +31,77 @@ struct VisualEffectBackground: NSViewRepresentable {
     }
 }
 
+// MARK: - Adaptive glass surface
+
+/// Shared surface modifier for translation popovers.
+///
+/// On macOS 26+ with a Swift 6.2+ toolchain this uses native Liquid Glass.
+/// Older compilers or runtime OS versions keep the established AppKit
+/// `NSVisualEffectView` material, so the package still builds and runs on
+/// macOS 13+.
+struct AdaptiveGlassSurface: ViewModifier {
+    enum Border {
+        case none
+        /// Native Liquid Glass already carries its own edge treatment, so
+        /// this only draws in fallback mode.
+        case subtle
+        /// Used by pinned notes so they remain visually distinct from the
+        /// live tooltip in both native and fallback modes.
+        case accent
+    }
+
+    let cornerRadius: CGFloat
+    var fallbackMaterial: NSVisualEffectView.Material = .toolTip
+    var border: Border = .subtle
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            liquidGlassSurface(content)
+        } else {
+            fallbackSurface(content)
+        }
+        #else
+        fallbackSurface(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func fallbackSurface(_ content: Content) -> some View {
+        content
+            .background(VisualEffectBackground(material: fallbackMaterial, cornerRadius: cornerRadius))
+            .overlay(borderOverlay(nativeGlass: false))
+    }
+
+    #if compiler(>=6.2)
+    @available(macOS 26.0, *)
+    @ViewBuilder
+    private func liquidGlassSurface(_ content: Content) -> some View {
+        content
+            .glassEffect(
+                .regular,
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .overlay(borderOverlay(nativeGlass: true))
+    }
+    #endif
+
+    @ViewBuilder
+    private func borderOverlay(nativeGlass: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        switch border {
+        case .none:
+            EmptyView()
+        case .subtle:
+            if !nativeGlass {
+                shape.strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+            }
+        case .accent:
+            shape.strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
+        }
+    }
+}
+
 // MARK: - Collapsible section
 
 /// Smoothly animates an inline section from height `0` to its measured

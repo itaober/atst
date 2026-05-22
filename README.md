@@ -22,6 +22,7 @@ Hit a hotkey, get a translation. Works **out of the box** with built-in Google +
 - 🧠 **AI dictionary mode** — for single words, AI providers can return multiple meanings, IPA phonetics, and a short usage explanation
 - 📌 **Pin as note** — freeze a translation into a floating sticky note for later reference
 - 💾 **Local cache** — repeat lookups hit a JSON cache, scoped per provider; configurable TTL and size cap
+- 🫧 **Native Liquid Glass** — translation tooltips and pinned notes use Liquid Glass on macOS 26+ when available, with an automatic fallback on older systems
 - 🪶 **Tiny footprint** — ~2 MB DMG, ~4 MB installed. Pure Swift/AppKit, no Electron, no Web view
 - 🌐 **Bilingual UI** — auto English / Chinese based on system language, with a manual override
 - 🆓 **Zero-config friendly** — works on a fresh install with no API keys (Google + Microsoft adapters); add an OpenAI-compatible endpoint when you want richer output
@@ -126,6 +127,7 @@ Add or remove recognition languages from the chip row below. Default: Simplified
 ### Other goodies
 
 - **Smart tooltip placement** — Web-style flip algorithm; tooltip never gets pushed off-screen or covers your selection
+- **Adaptive glass surface** — native Liquid Glass on macOS 26+ with Swift 6.2+ builds; older macOS versions keep the AppKit `NSVisualEffectView` tooltip material
 - **Cache stats** — see how many entries are cached and how much disk they're using, with a one-click clear button
 - **Untranslatable detection** — proper nouns / brands / misspellings get a 🔘 marker and skip the cache
 - **Theme** — Auto / Light / Dark, applied app-wide
@@ -157,7 +159,6 @@ Things on the radar (open an issue if you'd like to vote one up):
 - [ ] Translation history with full-text search
 - [ ] Streaming token-by-token rendering for AI providers that support it
 - [ ] Apple Notarization + proper code signing (no more right-click → Open)
-- [ ] **Liquid Glass tooltip** on macOS 26+ — the code path is already gated behind `#if compiler(>=6.2)` + `if #available(macOS 26.0, *)`; enables automatically once we build with Xcode 26 / Swift 6.2+ SDK and the user is on macOS 26 (Tahoe). Falls back to the regular `NSVisualEffectView` toolTip material until then
 
 ---
 

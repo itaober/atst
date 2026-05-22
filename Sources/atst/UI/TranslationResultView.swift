@@ -56,7 +56,7 @@ struct TranslationResultView: View {
         let stack = tooltipStack(descriptionExpanded: expanded)
         return Group {
             if includeSurface {
-                stack.modifier(GlassSurface(cornerRadius: cornerRadius))
+                stack.modifier(AdaptiveGlassSurface(cornerRadius: cornerRadius))
             } else {
                 stack
             }
@@ -896,38 +896,5 @@ private struct AISegmentBlock: View {
                       : L.pick("Expand explanation", "展开释义"))
             }
         }
-    }
-}
-
-/// Background modifier for the live tooltip. Uses Liquid Glass on macOS 26+
-/// when the SDK supports it (gated by `#if compiler(>=6.2)`), otherwise the
-/// shared `VisualEffectBackground` with the system `.toolTip` material.
-private struct GlassSurface: ViewModifier {
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            content
-                .glassEffect(
-                    .regular,
-                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                )
-        } else {
-            fallbackSurface(content)
-        }
-        #else
-        fallbackSurface(content)
-        #endif
-    }
-
-    @ViewBuilder
-    private func fallbackSurface(_ content: Content) -> some View {
-        content
-            .background(VisualEffectBackground(material: .toolTip, cornerRadius: cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
-            )
     }
 }

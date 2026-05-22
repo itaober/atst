@@ -79,7 +79,7 @@ struct PinnedNoteView: View {
         .padding(.bottom, 7)
         .frame(width: pinnedWidth, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .modifier(PinnedNoteSurface(cornerRadius: cornerRadius))
+        .modifier(AdaptiveGlassSurface(cornerRadius: cornerRadius, border: .accent))
         .padding(5)
     }
 
@@ -396,21 +396,5 @@ private struct PinnedAISegmentBlock: View {
                       : L.pick("Expand explanation", "展开释义"))
             }
         }
-    }
-}
-
-/// Pinned notes use the same tooltip material as the live tooltip but with
-/// an accent-coloured border so the user can visually tell them apart from
-/// the active translation.
-private struct PinnedNoteSurface: ViewModifier {
-    let cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .background(VisualEffectBackground(material: .toolTip, cornerRadius: cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
-            )
     }
 }
