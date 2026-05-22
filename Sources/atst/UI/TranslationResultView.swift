@@ -133,6 +133,12 @@ struct TranslationResultView: View {
             .foregroundStyle(.tertiary)
             .help(L.pick("Close", "关闭"))
         }
+        // The whole header strip — model name, status dot, spacer — is a
+        // drag handle for the floating panel. Buttons inside (refresh /
+        // pin / close) keep their own click handling because they sit
+        // *above* the background drag-initiator. Cursor turns into an
+        // open hand on hover so users discover the affordance.
+        .background(WindowDragHandle())
     }
 
     private var headerTitle: String {

@@ -211,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func runOCRThenTranslate(capture: ScreenshotCapture) async {
         let config = settingsStore.configuration
         viewModel.beginScreenshotOCR()
-        panelController.show(anchor: .point(capture.anchorPoint))
+        panelController.show(anchor: screenshotAnchor(for: capture))
 
         let text: String
         do {
@@ -272,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard isAIVisionAvailable(config: config) else {
             AppLogger.log("AI vision unavailable (aiEnabled=\(config.aiEnabled), model='\(config.screenshotModel)')")
             if !alreadyShowing {
-                panelController.show(anchor: .point(capture.anchorPoint))
+                panelController.show(anchor: screenshotAnchor(for: capture))
             }
             viewModel.showError(config.aiEnabled
                 ? AppError.noScreenshotModelConfigured
@@ -281,9 +281,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         viewModel.beginScreenshotTranslation()
         if !alreadyShowing {
-            panelController.show(anchor: .point(capture.anchorPoint))
+            panelController.show(anchor: screenshotAnchor(for: capture))
         }
         await viewModel.translateScreenshot(capture)
+    }
+
+    /// Prefer the reverse-engineered screenshot rect (which lets the
+    /// floating panel pick a side that doesn't cover the source) and fall
+    /// back to the raw mouse-release point when rect detection failed.
+    private func screenshotAnchor(for capture: ScreenshotCapture) -> FloatingPanelAnchor {
+        if let rect = capture.recognisedRect {
+            return .rect(rect)
+        }
+        return .point(capture.anchorPoint)
     }
 
     private func isAIVisionAvailable(config: AppConfiguration) -> Bool {

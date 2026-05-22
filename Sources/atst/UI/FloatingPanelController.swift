@@ -275,40 +275,90 @@ final class FloatingPanelController {
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
         panel.isReleasedWhenClosed = false
-        panel.isMovable = false
+        // Movable + nonactivating: the user can drag the panel via the
+        // header strip (see `WindowDragHandle`) without stealing app focus
+        // from whatever they were translating from. `isMovableByWindowBackground`
+        // stays off so dragging the translation body doesn't kidnap text
+        // selection.
+        panel.isMovable = true
         panel.isMovableByWindowBackground = false
         return panel
     }
 
+    /// Smart placement: convert the anchor to a rect, then try candidate
+    /// positions (right → below → above → left) and pick the first one
+    /// that fully fits the screen's visible area. Falls back to the
+    /// largest-area-clamped position when none fully fit (e.g. a huge
+    /// tooltip on a small external display).
+    ///
+    /// This replaces the previous "just offset from the anchor point and
+    /// clamp" logic, which often pushed the tooltip away from the source
+    /// when the source was near the screen edge.
     private func topLeftPoint(for anchor: FloatingPanelAnchor, size: NSSize) -> NSPoint {
-        let anchorPoint = point(for: anchor)
-        let proposed = NSPoint(x: anchorPoint.x + 8, y: anchorPoint.y - 2)
-        return clampedTopLeft(proposed, size: size)
+        let anchorRect = self.anchorRect(for: anchor)
+        let probe = NSPoint(x: anchorRect.midX, y: anchorRect.midY)
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(probe) }) ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+
+        let candidates = candidatePositions(anchor: anchorRect, size: size)
+        for candidate in candidates where fitsInside(topLeft: candidate, size: size, frame: visible) {
+            return candidate
+        }
+        // Nothing fits cleanly — pick whichever candidate maximises on-screen
+        // area and clamp it to keep at least an edge visible.
+        let best = candidates.max(by: { onScreenArea(topLeft: $0, size: size, frame: visible) < onScreenArea(topLeft: $1, size: size, frame: visible) }) ?? candidates[0]
+        return clamp(topLeft: best, size: size, frame: visible)
     }
 
-    private func clampedTopLeft(_ proposed: NSPoint, size: NSSize) -> NSPoint {
-        let screen = NSScreen.screens.first { $0.frame.contains(proposed) } ?? NSScreen.main
-        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-
-        let minX = visibleFrame.minX + 8
-        let maxX = visibleFrame.maxX - size.width - 8
-        let minTop = visibleFrame.minY + size.height + 8
-        let maxTop = visibleFrame.maxY - 8
-
-        let x = min(max(proposed.x, minX), max(minX, maxX))
-        let y = min(max(proposed.y, minTop), max(minTop, maxTop))
-        return NSPoint(x: x, y: y)
-    }
-
-    private func point(for anchor: FloatingPanelAnchor) -> NSPoint {
+    private func anchorRect(for anchor: FloatingPanelAnchor) -> NSRect {
         switch anchor {
         case .mouse:
-            return NSEvent.mouseLocation
-        case .point(let point):
-            return point
-        case .rect(let rect):
-            return NSPoint(x: rect.maxX, y: rect.midY)
+            let p = NSEvent.mouseLocation
+            return NSRect(x: p.x, y: p.y, width: 1, height: 1)
+        case .point(let p):
+            return NSRect(x: p.x, y: p.y, width: 1, height: 1)
+        case .rect(let r):
+            return r
         }
+    }
+
+    private func candidatePositions(anchor: NSRect, size: NSSize) -> [NSPoint] {
+        let gap: CGFloat = 8
+        // Position the panel's top-left such that the panel sits on each side
+        // of the anchor with `gap` spacing. macOS y axis points up, so:
+        //   - top-of-panel = topLeft.y
+        //   - bottom-of-panel = topLeft.y - size.height
+        return [
+            // Right of anchor, aligned to anchor's top edge
+            NSPoint(x: anchor.maxX + gap, y: anchor.maxY),
+            // Below anchor, aligned to anchor's left edge
+            NSPoint(x: anchor.minX,       y: anchor.minY - gap),
+            // Above anchor, aligned to anchor's left edge
+            NSPoint(x: anchor.minX,       y: anchor.maxY + size.height + gap),
+            // Left of anchor, aligned to anchor's top edge
+            NSPoint(x: anchor.minX - size.width - gap, y: anchor.maxY)
+        ]
+    }
+
+    private func fitsInside(topLeft: NSPoint, size: NSSize, frame: NSRect) -> Bool {
+        let panelRect = NSRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height)
+        return frame.contains(panelRect)
+    }
+
+    private func onScreenArea(topLeft: NSPoint, size: NSSize, frame: NSRect) -> CGFloat {
+        let panelRect = NSRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height)
+        let overlap = frame.intersection(panelRect)
+        return overlap.isEmpty ? 0 : overlap.width * overlap.height
+    }
+
+    private func clamp(topLeft: NSPoint, size: NSSize, frame: NSRect) -> NSPoint {
+        let minX = frame.minX + 8
+        let maxX = frame.maxX - size.width - 8
+        let minTop = frame.minY + size.height + 8
+        let maxTop = frame.maxY - 8
+        let x = min(max(topLeft.x, minX), max(minX, maxX))
+        let y = min(max(topLeft.y, minTop), max(minTop, maxTop))
+        return NSPoint(x: x, y: y)
     }
 }
 

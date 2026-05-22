@@ -163,6 +163,58 @@ struct TooltipDescription: View {
 // screen. We fall back to plain `ProgressView` spinners for every loading
 // state; the spinner already conveys "in flight" the conventional way.)
 
+// MARK: - Window drag handle
+
+/// A transparent AppKit shim used as the `.background` of a SwiftUI view
+/// to make that region drag the enclosing `NSWindow` when the user
+/// presses-and-drags. Layered behind the tooltip's header HStack so the
+/// model-name strip + spacer area initiate window drag, while the inline
+/// buttons (refresh / pin / close) continue to capture their own clicks
+/// because they sit *on top* of the background.
+///
+/// Pairs with `panel.isMovable = true`. Cursor switches to `openHand`
+/// when hovering over the drag area so the affordance is discoverable.
+struct WindowDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DragInitiatorView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class DragInitiatorView: NSView {
+    private var trackingArea: NSTrackingArea?
+
+    override func mouseDown(with event: NSEvent) {
+        // performDrag enters a modal mouse-tracking loop owned by the
+        // window server; it returns when the user releases the mouse.
+        window?.performDrag(with: event)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        // `.cursorUpdate` lets us swap the cursor only while the mouse is
+        // over the drag region — no global cursor stack manipulation.
+        // `.inVisibleRect` keeps the tracking area aligned with our
+        // (possibly resized) bounds automatically.
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.openHand.set()
+    }
+}
+
 // MARK: - Speech
 
 /// Tiny `AVSpeechSynthesizer` wrapper used by tooltip footers to pronounce
