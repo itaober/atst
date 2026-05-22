@@ -2,7 +2,9 @@
 
 # atst
 
-**ai-text-select-translate** — macOS 菜单栏轻量翻译工具
+**a(i)-text-select-translate** — macOS 菜单栏轻量翻译工具
+
+`a`（AI）· `t`（text）· `s`（select）· `t`（translate）
 
 按下快捷键，立刻得到翻译。内置 Google + Microsoft 接口**开箱即用**；配置自己的 AI 模型后还能解锁词典级释义、IPA 音标和智能解释。
 

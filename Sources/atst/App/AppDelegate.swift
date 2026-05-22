@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppLogger.log("atst launched pid=\(ProcessInfo.processInfo.processIdentifier) ax=\(PermissionChecker.isAccessibilityTrusted)")
         NSApp.setActivationPolicy(.accessory)
+        L.override = settingsStore.configuration.uiLanguage
         applyAppearance(settingsStore.configuration.appearanceMode)
         configureMainMenu()
         _ = statusBarController
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsStore.$configuration
             .dropFirst()
             .sink { [weak self] configuration in
+                L.override = configuration.uiLanguage
                 self?.configureHotKeys(configuration)
                 self?.ensureHotKeyMonitorRunning(prompt: false)
                 self?.applyAppearance(configuration.appearanceMode)

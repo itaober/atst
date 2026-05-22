@@ -2,7 +2,9 @@
 
 # atst
 
-**ai-text-select-translate** — a tiny menu-bar translator for macOS
+**a(i)-text-select-translate** — a tiny menu-bar translator for macOS
+
+`a` (AI) · `t` (text) · `s` (select) · `t` (translate)
 
 Hit a hotkey, get a translation. Works **out of the box** with built-in Google + Microsoft adapters, and unlocks AI-grade dictionary / explanation when you bring your own model.
 

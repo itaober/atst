@@ -66,6 +66,9 @@ struct AppConfiguration: Codable, Equatable {
 
     // MARK: - Cross-cutting
     var appearanceMode: AppearanceMode
+    /// UI language preference. `.auto` follows the system locale (zh-* →
+    /// Chinese, else English); the other cases hard-override.
+    var uiLanguage: UILanguage
     var cacheEnabled: Bool
     var cacheTTLDays: Int
     var cacheMaxEntries: Int
@@ -96,11 +99,15 @@ struct AppConfiguration: Codable, Equatable {
         targetLanguage: L.isChinese ? "简体中文" : "English",
         systemPrompt: defaultSystemPrompt,
         smartExplanationPrompt: defaultSmartExplanationPrompt,
-        timeoutSeconds: 60,
+        // 10s default — long enough for typical word/sentence translations
+        // even on a slow LLM, short enough that users notice quickly when
+        // the endpoint is unreachable.
+        timeoutSeconds: 10,
         phoneticEnabled: false,
         smartExplanationEnabled: false,
         smartExplanationExpandedByDefault: false,
         appearanceMode: .auto,
+        uiLanguage: .auto,
         cacheEnabled: true,
         cacheTTLDays: 90,
         cacheMaxEntries: 2000,
@@ -128,6 +135,7 @@ struct AppConfiguration: Codable, Equatable {
         smartExplanationEnabled: Bool = false,
         smartExplanationExpandedByDefault: Bool = false,
         appearanceMode: AppearanceMode = .auto,
+        uiLanguage: UILanguage = .auto,
         cacheEnabled: Bool = true,
         cacheTTLDays: Int = 90,
         cacheMaxEntries: Int = 2000,
@@ -151,6 +159,7 @@ struct AppConfiguration: Codable, Equatable {
         self.smartExplanationEnabled = smartExplanationEnabled
         self.smartExplanationExpandedByDefault = smartExplanationExpandedByDefault
         self.appearanceMode = appearanceMode
+        self.uiLanguage = uiLanguage
         self.cacheEnabled = cacheEnabled
         self.cacheTTLDays = cacheTTLDays
         self.cacheMaxEntries = cacheMaxEntries
@@ -189,6 +198,7 @@ struct AppConfiguration: Codable, Equatable {
         smartExplanationEnabled = try container.decodeIfPresent(Bool.self, forKey: .smartExplanationEnabled) ?? defaults.smartExplanationEnabled
         smartExplanationExpandedByDefault = try container.decodeIfPresent(Bool.self, forKey: .smartExplanationExpandedByDefault) ?? defaults.smartExplanationExpandedByDefault
         appearanceMode = try container.decodeIfPresent(AppearanceMode.self, forKey: .appearanceMode) ?? defaults.appearanceMode
+        uiLanguage = try container.decodeIfPresent(UILanguage.self, forKey: .uiLanguage) ?? defaults.uiLanguage
         cacheEnabled = try container.decodeIfPresent(Bool.self, forKey: .cacheEnabled) ?? defaults.cacheEnabled
         cacheTTLDays = try container.decodeIfPresent(Int.self, forKey: .cacheTTLDays) ?? defaults.cacheTTLDays
         cacheMaxEntries = try container.decodeIfPresent(Int.self, forKey: .cacheMaxEntries) ?? defaults.cacheMaxEntries
@@ -257,7 +267,7 @@ struct AppConfiguration: Codable, Equatable {
 }
 
 private let defaultSystemPrompt = """
-You are atst (ai-text-select-translate). Translate the user's input into the target language.
+You are atst (a-i-text-select-translate). Translate the user's input into the target language.
 
 Translation rules:
 - Produce natural, accurate, idiomatic text in the target language; avoid over-paraphrasing.

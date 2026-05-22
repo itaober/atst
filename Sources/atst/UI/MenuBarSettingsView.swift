@@ -529,12 +529,7 @@ struct MenuBarSettingsView: View {
     private var generalSection: some View {
         SettingsSection(title: L.pick("General", "通用")) {
             HStack(spacing: 10) {
-                SettingsTextRow(
-                    title: L.pick("Target Language", "目标语言"),
-                    text: $draft.targetLanguage,
-                    placeholder: L.pick("English", "简体中文"),
-                    onChange: debouncedSave
-                )
+                targetLanguageRow
                 SettingsNumberRow(
                     title: L.pick("Timeout", "超时"),
                     value: $draft.timeoutSeconds,
@@ -544,8 +539,87 @@ struct MenuBarSettingsView: View {
                 .frame(width: 96)
             }
             Divider().padding(.horizontal, 10)
+            uiLanguageRow
+            Divider().padding(.horizontal, 10)
             appearanceRow
         }
+    }
+
+    /// Pre-canned target language menu (translates AI / API output into
+    /// this language). Falls back to a free-form display when the user's
+    /// saved value isn't in the list — so saved configs from older
+    /// builds (or future custom typed values) survive across upgrades.
+    private var targetLanguageRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L.pick("Target Language", "目标语言"))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            Menu {
+                ForEach(TargetLanguagePreset.all, id: \.self) { preset in
+                    Button(preset) {
+                        draft.targetLanguage = preset
+                        save()
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(draft.targetLanguage.isEmpty
+                         ? L.pick("Select…", "请选择…")
+                         : draft.targetLanguage)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .font(.system(size: 12))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private var uiLanguageRow: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(L.pick("Interface Language", "界面语言"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Text(L.pick("Auto follows your macOS language", "自动会跟随系统语言"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Picker("", selection: $draft.uiLanguage) {
+                Text(L.pick("Auto", "自动")).tag(UILanguage.auto)
+                Text("English").tag(UILanguage.english)
+                Text("中文").tag(UILanguage.chinese)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.mini)
+            .frame(width: 150)
+            .onChange(of: draft.uiLanguage) { _ in
+                save()
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
     }
 
     private var hotkeysSection: some View {
@@ -708,8 +782,32 @@ struct MenuBarSettingsView: View {
         draft.apiProviders = defaults.apiProviders
         draft.screenshotUseVisionOCR = defaults.screenshotUseVisionOCR
         draft.ocrLanguages = defaults.ocrLanguages
+        draft.uiLanguage = defaults.uiLanguage
+        draft.targetLanguage = defaults.targetLanguage
+        draft.timeoutSeconds = defaults.timeoutSeconds
         save()
     }
+}
+
+/// Curated list of common translation targets. Aims to cover the languages
+/// atst's typical users (CN / EN-centric developers) are most likely to
+/// translate into; the underlying provider accepts any of these strings.
+/// For API providers (Google / Microsoft) `LanguageCode.bcp47` maps each
+/// display string to the right BCP-47 code under the hood.
+enum TargetLanguagePreset {
+    static let all: [String] = [
+        "简体中文",
+        "繁體中文",
+        "English",
+        "日本語",
+        "한국어",
+        "Français",
+        "Deutsch",
+        "Español",
+        "Italiano",
+        "Português",
+        "Русский"
+    ]
 }
 
 // MARK: - Language chip + flow layout
