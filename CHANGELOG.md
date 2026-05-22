@@ -8,6 +8,14 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 (no changes yet)
 
+## v0.1.3
+
+- General settings layout unified: every control in the section now aligns to a single right-edge guideline; target-language picker is upsized so its value reads as clearly as the row label
+- Tooltip width now adapts to the source — short selections stay compact (320pt), long sentences or multi-line input expand to 480pt for comfortable reading
+- Tooltip can no longer overflow the screen: a built-in ScrollView caps content at the available height, and the scroll bar disappears automatically when you drag the panel to a position with more room
+- Cache is more selective: multi-line text, sentences over 200 chars, inputs containing URLs, and empty / punctuation-only results are all skipped — the cache fills with high-reuse words and phrases instead of single-use chunks
+- App icon source is now full-bleed: the icon's source PNG controls the full visual (background + artwork) rather than being centred inside a system-drawn white squircle, eliminating the previous "tiny artwork inside a big white frame" problem
+
 ## v0.1.2
 
 - Target language dropdown now uses a native AppKit popup button (cleaner chevron)

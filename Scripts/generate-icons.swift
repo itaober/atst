@@ -19,8 +19,13 @@ guard let sourceImage = NSImage(contentsOf: sourceURL) else {
 // macOS app icons sit inside a rounded square. The standard mask radius
 // is roughly 22.37% of the icon edge per Apple's templates.
 let cornerRatio: CGFloat = 0.2237
-// Apple icons leave breathing room around the central artwork.
-let contentRatio: CGFloat = 0.74
+// Source image fills the squircle edge-to-edge. The source PNG is expected
+// to bake in its own padding / visual hierarchy. Previously this was 0.74
+// (Apple's "centred artwork inside white squircle" template), but that
+// double-padded full-bleed source images and made them feel small in the
+// Dock. The full-bleed source is now the source of truth — the squircle
+// just clips its corners.
+let contentRatio: CGFloat = 1.0
 
 func makeBitmap(width: Int, height: Int, draw: (NSRect) -> Void) -> NSImage {
     let image = NSImage(size: NSSize(width: width, height: height))
@@ -49,13 +54,12 @@ func drawAppIcon(in rect: NSRect) {
     let edge = rect.width
     let radius = edge * cornerRatio
     let tile = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-    NSColor.white.setFill()
-    tile.fill()
 
-    NSColor(calibratedWhite: 0, alpha: 0.06).setStroke()
-    tile.lineWidth = max(1, edge * 0.004)
-    tile.stroke()
-
+    // Source image fills the squircle edge-to-edge — no white background
+    // layer behind it. The source PNG provides its own background colour
+    // (e.g. cream / paper) which then becomes the icon's actual base.
+    // The squircle path is only used as a clip mask so the source's
+    // square corners get rounded into the macOS icon shape.
     NSGraphicsContext.saveGraphicsState()
     tile.addClip()
     let contentEdge = edge * contentRatio
@@ -67,6 +71,12 @@ func drawAppIcon(in rect: NSRect) {
     )
     sourceImage.draw(in: contentRect, from: .zero, operation: .sourceOver, fraction: 1.0)
     NSGraphicsContext.restoreGraphicsState()
+
+    // Hairline edge stroke for a touch of definition against light Docks
+    // and Finder backgrounds. Drawn AFTER the clip so it sits on top.
+    NSColor(calibratedWhite: 0, alpha: 0.06).setStroke()
+    tile.lineWidth = max(1, edge * 0.004)
+    tile.stroke()
 }
 
 func drawMenuBarIcon(in rect: NSRect) {

@@ -528,16 +528,13 @@ struct MenuBarSettingsView: View {
 
     private var generalSection: some View {
         SettingsSection(title: L.pick("General", "通用")) {
-            HStack(spacing: 10) {
-                targetLanguageRow
-                SettingsNumberRow(
-                    title: L.pick("Timeout", "超时"),
-                    value: $draft.timeoutSeconds,
-                    unit: L.pick("s", "秒"),
-                    onChange: debouncedSave
-                )
-                .frame(width: 96)
-            }
+            // All four rows share the same horizontal layout — label (+
+            // optional subtitle) on the left, control pinned to the right
+            // edge — so the section has a consistent visual rhythm rather
+            // than mixing "label above" and "label beside" patterns.
+            targetLanguageRow
+            Divider().padding(.horizontal, 10)
+            timeoutRow
             Divider().padding(.horizontal, 10)
             uiLanguageRow
             Divider().padding(.horizontal, 10)
@@ -545,17 +542,23 @@ struct MenuBarSettingsView: View {
         }
     }
 
-    /// Pre-canned target language menu. Uses a native SwiftUI `Picker` so
-    /// the dropdown chrome matches the system popup button (the chevron,
-    /// hover background, focus ring all come from AppKit). Saved free-form
-    /// values that aren't in the preset list are surfaced as a leading
-    /// "current value" entry above the divider, so historical configs
-    /// keep displaying their original target without forcing a snap.
+    /// Width applied to every right-aligned control in the General
+    /// section (target-language popup, segmented pickers). Picking a single
+    /// value gives the section a vertical guideline that the eye can
+    /// follow down the right edge. 170pt comfortably fits the longest
+    /// preset label ("繁體中文") at .small picker size with breathing room.
+    private let generalControlWidth: CGFloat = 170
+
+    /// Target language picker. Native SwiftUI `Picker` so the chevron /
+    /// hover background / focus ring come from AppKit. Saved free-form
+    /// values not in the preset list get prepended above a divider so
+    /// historical configs keep their selection visible.
     private var targetLanguageRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 10) {
             Text(L.pick("Target Language", "目标语言"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
             Picker("", selection: $draft.targetLanguage) {
                 if isCustomTargetLanguage {
                     Text(draft.targetLanguage).tag(draft.targetLanguage)
@@ -566,18 +569,50 @@ struct MenuBarSettingsView: View {
                 }
             }
             .labelsHidden()
+            // .small (not .mini): the target language is the most-changed
+            // value in this section, so its text ("简体中文" etc.) should
+            // be as readable as the row label next to it. .mini made the
+            // popup feel diminutive against the 12pt left-side label.
             .controlSize(.small)
+            .frame(width: generalControlWidth)
             .onChange(of: draft.targetLanguage) { _ in
                 save()
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 7)
     }
 
     private var isCustomTargetLanguage: Bool {
         !draft.targetLanguage.isEmpty
             && !TargetLanguagePreset.all.contains(draft.targetLanguage)
+    }
+
+    /// Inline numeric timeout. The text field sits inside a fixed-width
+    /// container aligned to the same right edge as the other General
+    /// controls; the "秒 / s" unit sits to its right, breaking the rigid
+    /// alignment slightly but staying readable.
+    private var timeoutRow: some View {
+        HStack(spacing: 10) {
+            Text(L.pick("Timeout", "超时"))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                TextField("10", value: $draft.timeoutSeconds, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 60)
+                    .onChange(of: draft.timeoutSeconds) { _ in debouncedSave() }
+                Text(L.pick("s", "秒"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: generalControlWidth, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
     }
 
     private var uiLanguageRow: some View {
@@ -599,7 +634,7 @@ struct MenuBarSettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.mini)
-            .frame(width: 150)
+            .frame(width: generalControlWidth)
             .onChange(of: draft.uiLanguage) { _ in
                 save()
             }
@@ -634,7 +669,7 @@ struct MenuBarSettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.mini)
-            .frame(width: 150)
+            .frame(width: generalControlWidth)
             .onChange(of: draft.appearanceMode) { _ in
                 save()
             }

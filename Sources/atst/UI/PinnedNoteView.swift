@@ -77,10 +77,21 @@ struct PinnedNoteView: View {
         .padding(.horizontal, 11)
         .padding(.top, 8)
         .padding(.bottom, 7)
-        .frame(width: 320, alignment: .leading)
+        .frame(width: pinnedWidth, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .modifier(PinnedNoteSurface(cornerRadius: cornerRadius))
         .padding(5)
+    }
+
+    /// Pinned notes inherit the live tooltip's two-tier width rule so a
+    /// long-text translation that was wide while live stays wide once
+    /// pinned, preserving readability after detachment.
+    private var pinnedWidth: CGFloat {
+        let trimmed = snapshot.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 80 || trimmed.contains("\n") {
+            return 480
+        }
+        return 320
     }
 
     private var header: some View {

@@ -381,15 +381,47 @@ final class TranslatorViewModel: ObservableObject {
     }
 
     /// Decide whether a successful translation should land in the local
-    /// cache. Skip when:
-    ///   1. Provider tagged the input as untranslatable (model self-report
+    /// cache. Skip when any of the following hold — caching long, unique,
+    /// or low-value entries just bloats the LRU without ever paying off.
+    ///
+    /// Hit-rate gates (cheap):
+    ///   1. Source spans multiple lines — paragraphs / articles / code
+    ///      blocks. Re-selection probability ≈ 0.
+    ///   2. Source longer than ~200 chars — even single-line, a sentence
+    ///      that long is almost certainly something the user pasted
+    ///      once and won't paste again.
+    ///   3. Source contains an http/https URL — we don't translate URLs,
+    ///      and any "translation" of a URL-containing chunk is best-effort.
+    ///
+    /// Quality gates:
+    ///   4. Provider tagged the input as untranslatable (model self-report
     ///      for AI, source==result heuristic for API).
-    ///   2. Output echoed the source unchanged (modulo case + whitespace)
+    ///   5. Output echoed the source unchanged (modulo case + whitespace)
     ///      with no extras — defensive fallback in case the flag was missed.
+    ///   6. Result trimmed of whitespace + punctuation is empty — there
+    ///      is nothing useful to remember.
     private static func shouldCache(source: String, output: TranslationOutput) -> Bool {
+        let trimmedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Hit-rate gates
+        if trimmedSource.contains("\n") || trimmedSource.contains("\r") {
+            return false
+        }
+        if trimmedSource.count > 200 {
+            return false
+        }
+        if trimmedSource.range(of: #"https?://"#, options: .regularExpression) != nil {
+            return false
+        }
+
+        // Quality gates
         if output.untranslatable { return false }
         guard let first = output.items.first else { return false }
-        let normSource = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let strippedFirst = first.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        if strippedFirst.isEmpty {
+            return false
+        }
+        let normSource = trimmedSource.lowercased()
         let normResult = first.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normSource == normResult, !output.hasDescription, !output.hasPhonetic {
             return false

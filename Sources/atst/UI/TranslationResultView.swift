@@ -10,6 +10,11 @@ import SwiftUI
 /// which mirrors the SwiftUI fitting height into the NSPanel frame.
 struct TranslationResultView: View {
     @ObservedObject var viewModel: TranslatorViewModel
+    /// Drives the maximum content height. Owned and updated by
+    /// `FloatingPanelController` so the tooltip can never overflow the
+    /// current screen, and so dragging to a position with more room
+    /// dismisses the scroll bar automatically.
+    @ObservedObject var layout: TooltipLayout
     var onClose: () -> Void
     var onContentSizeChange: (CGSize) -> Void = { _ in }
     /// Invoked when the user taps the "cached" indicator (header refresh).
@@ -60,15 +65,46 @@ struct TranslationResultView: View {
     }
 
     private func tooltipStack(descriptionExpanded expanded: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            header
-            content(descriptionExpanded: expanded)
+        // Wrap the stack in a ScrollView whose height tops out at
+        // `layout.maxContentHeight`. SwiftUI sizes the ScrollView to its
+        // content's natural height when content fits, only engaging the
+        // scroll bar (and capping height) when natural > max. The view
+        // therefore stays scroll-free for short translations and only
+        // shows a scroll bar when the panel literally can't fit the
+        // content within the available screen space.
+        //
+        // The inner `header` is the drag handle (see WindowDragHandle in
+        // tooltipHeader) — keeping it inside the scroll area means the
+        // user can grab it from the top edge even when content scrolls,
+        // matching native macOS behaviour (toolbar pinned at top).
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                header
+                content(descriptionExpanded: expanded)
+            }
+            .padding(.horizontal, 11)
+            .padding(.top, 8)
+            .padding(.bottom, 7)
+            .frame(width: preferredTooltipWidth, alignment: .leading)
         }
-        .padding(.horizontal, 11)
-        .padding(.top, 8)
-        .padding(.bottom, 7)
-        .frame(width: 320, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxHeight: layout.maxContentHeight)
+        .fixedSize(horizontal: true, vertical: true)
+    }
+
+    /// Two-tier tooltip width. Short selections (a word, a name, a short
+    /// phrase) read better in a narrow column; long selections — sentences
+    /// over ~80 characters or anything multi-line — produce a forest of
+    /// wrapped fragments at the narrow width, so we widen the panel to
+    /// keep each line within a reasonable reading length. The exact
+    /// thresholds are intentionally coarse (binary, not tiered) so the
+    /// panel never feels like its size is drifting unpredictably.
+    private var preferredTooltipWidth: CGFloat {
+        let trimmed = viewModel.state.sourceText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 80 || trimmed.contains("\n") {
+            return 480
+        }
+        return 320
     }
 
     // MARK: - Header

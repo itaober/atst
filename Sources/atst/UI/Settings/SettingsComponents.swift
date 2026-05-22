@@ -187,30 +187,7 @@ struct SettingsSecureRow: View {
     }
 }
 
-/// Number field with a trailing unit label ("秒" / "s"). Used for the
-/// translation timeout in the General section.
-struct SettingsNumberRow: View {
-    let title: String
-    @Binding var value: Double
-    let unit: String
-    var onChange: () -> Void = {}
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                TextField("60", value: $value, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .onChange(of: value) { _ in onChange() }
-                Text(unit)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-    }
-}
+// (SettingsNumberRow removed — the "label above input" layout it provided
+// no longer fits anywhere in the panel. The General section's timeout row
+// is now inlined as a horizontal "label left / control right" row to match
+// the rest of the section's rhythm.)

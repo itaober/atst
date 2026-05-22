@@ -163,6 +163,30 @@ struct TooltipDescription: View {
 // screen. We fall back to plain `ProgressView` spinners for every loading
 // state; the spinner already conveys "in flight" the conventional way.)
 
+// MARK: - Live tooltip layout state
+
+/// Carries the maximum height the tooltip's scrollable content can occupy.
+///
+/// `FloatingPanelController` updates this whenever the panel's position
+/// changes (on initial `show`, on `setContentSize`, and on every drag
+/// completion). The SwiftUI view applies it as `frame(maxHeight: ...)`
+/// on its inner `ScrollView`, so:
+///
+///   - When natural content height ≤ `maxContentHeight`, the ScrollView
+///     reports the content's natural height and shows no scroll bar.
+///   - When natural content height > `maxContentHeight`, the ScrollView
+///     caps at that height and a scroll bar appears.
+///
+/// Drag the panel to a screen position with more room above the bottom
+/// edge, and the limit grows; if the content now fits, the scroll bar
+/// disappears automatically.
+@MainActor
+final class TooltipLayout: ObservableObject {
+    /// `.infinity` means "no cap" — used during the very first layout pass
+    /// before the controller has measured the screen.
+    @Published var maxContentHeight: CGFloat = .infinity
+}
+
 // MARK: - Window drag handle
 
 /// A transparent AppKit shim used as the `.background` of a SwiftUI view

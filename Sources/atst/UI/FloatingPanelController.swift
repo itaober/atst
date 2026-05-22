@@ -9,6 +9,11 @@ final class FloatingPanelController {
     private let onRefresh: (String) -> Void
     private let onOpenSettings: () -> Void
 
+    /// Drives the tooltip's max-height constraint so the panel can never
+    /// overflow the active screen, and a drag to a position with more
+    /// room automatically dismisses the scroll bar.
+    private let tooltipLayout = TooltipLayout()
+
     private lazy var hostingController: NSHostingController<TranslationResultView> = makeHostingController()
     private lazy var panel: NSPanel = makePanel()
     private var pinObserver: AnyCancellable?
@@ -17,6 +22,7 @@ final class FloatingPanelController {
     private var outsideClickGlobalMonitor: Any?
     private var outsideClickLocalMonitor: Any?
     private var escKeyLocalMonitor: Any?
+    private var panelMoveObserver: NSObjectProtocol?
     private var lastAppliedContentSize: NSSize?
 
     /// Independent panels created when the user pins a translation. Each is
@@ -58,6 +64,9 @@ final class FloatingPanelController {
             panel.alphaValue = 0
         }
         panel.setFrameTopLeftPoint(topLeft)
+        // First cap of the session — happens before the alpha-in animation
+        // so the very first render is already bounded.
+        updateMaxContentHeight()
 
         if activate {
             panel.makeKeyAndOrderFront(nil)
@@ -75,6 +84,7 @@ final class FloatingPanelController {
         }
 
         startDismissalMonitors()
+        startPanelMoveObserver()
         observePinState()
     }
 
@@ -82,6 +92,7 @@ final class FloatingPanelController {
         pinObserver = nil
         lastTopLeft = nil
         stopDismissalMonitors()
+        stopPanelMoveObserver()
         viewModel.pinned = false
         panel.orderOut(nil)
     }
@@ -209,6 +220,31 @@ final class FloatingPanelController {
         escKeyLocalMonitor = nil
     }
 
+    // MARK: - Panel move observer (drag → recompute max content height)
+
+    private func startPanelMoveObserver() {
+        stopPanelMoveObserver()
+        // `NSWindow.didMoveNotification` fires after AppKit finishes
+        // dragging via `performDrag(with:)`. Recompute the max content
+        // height so the ScrollView in the SwiftUI tree can drop the
+        // scroll bar if the new position gives enough room — or show it
+        // if the user dragged the panel down into less room.
+        panelMoveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.updateMaxContentHeight() }
+        }
+    }
+
+    private func stopPanelMoveObserver() {
+        if let panelMoveObserver {
+            NotificationCenter.default.removeObserver(panelMoveObserver)
+            self.panelMoveObserver = nil
+        }
+    }
+
     // MARK: - Sizing
 
     private func ensureSized() {
@@ -232,11 +268,16 @@ final class FloatingPanelController {
         }
         lastAppliedContentSize = newSize
         panel.setContentSize(newSize)
+        // setContentSize is top-anchored (see TooltipPanel), so the new
+        // bottom edge may have moved — keep the available-height cap
+        // in sync with the new frame.
+        updateMaxContentHeight()
     }
 
     private func makeHostingController() -> NSHostingController<TranslationResultView> {
         let view = TranslationResultView(
             viewModel: viewModel,
+            layout: tooltipLayout,
             onClose: { [weak self] in self?.close() },
             onContentSizeChange: { [weak self] size in
                 self?.handleContentSizeChange(size)
@@ -254,6 +295,31 @@ final class FloatingPanelController {
         controller.view.wantsLayer = true
         controller.view.layer?.backgroundColor = NSColor.clear.cgColor
         return controller
+    }
+
+    /// Recompute the maximum content height based on the panel's current
+    /// top edge and the active screen's visible frame. Pushed into the
+    /// SwiftUI tree via `tooltipLayout`; the ScrollView inside the view
+    /// re-evaluates and shows/hides the scroll bar as needed.
+    ///
+    /// Called from three places:
+    ///   1. After `show()` positions the panel (initial cap).
+    ///   2. After `resizePanel(...)` adjusts content size (keep cap in sync
+    ///      with new top edge, since `TooltipPanel.setContentSize` is
+    ///      top-anchored).
+    ///   3. On `NSWindow.didMoveNotification` (user dragged the panel).
+    private func updateMaxContentHeight() {
+        let topY = panel.frame.maxY
+        let probe = NSPoint(x: panel.frame.midX, y: topY)
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(probe) }) ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // 8pt safety margin to the bottom of the visible area — same as
+        // smart positioning uses. Floor at 120pt so the tooltip never
+        // becomes uselessly short on tiny screens / edge cases.
+        let available = max(120, topY - visible.minY - 8)
+        if tooltipLayout.maxContentHeight != available {
+            tooltipLayout.maxContentHeight = available
+        }
     }
 
     private func makePanel() -> NSPanel {
