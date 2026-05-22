@@ -545,53 +545,39 @@ struct MenuBarSettingsView: View {
         }
     }
 
-    /// Pre-canned target language menu (translates AI / API output into
-    /// this language). Falls back to a free-form display when the user's
-    /// saved value isn't in the list — so saved configs from older
-    /// builds (or future custom typed values) survive across upgrades.
+    /// Pre-canned target language menu. Uses a native SwiftUI `Picker` so
+    /// the dropdown chrome matches the system popup button (the chevron,
+    /// hover background, focus ring all come from AppKit). Saved free-form
+    /// values that aren't in the preset list are surfaced as a leading
+    /// "current value" entry above the divider, so historical configs
+    /// keep displaying their original target without forcing a snap.
     private var targetLanguageRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(L.pick("Target Language", "目标语言"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-            Menu {
+            Picker("", selection: $draft.targetLanguage) {
+                if isCustomTargetLanguage {
+                    Text(draft.targetLanguage).tag(draft.targetLanguage)
+                    Divider()
+                }
                 ForEach(TargetLanguagePreset.all, id: \.self) { preset in
-                    Button(preset) {
-                        draft.targetLanguage = preset
-                        save()
-                    }
+                    Text(preset).tag(preset)
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(draft.targetLanguage.isEmpty
-                         ? L.pick("Select…", "请选择…")
-                         : draft.targetLanguage)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .font(.system(size: 12))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.primary.opacity(0.05))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                )
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize(horizontal: false, vertical: true)
+            .labelsHidden()
+            .controlSize(.small)
+            .onChange(of: draft.targetLanguage) { _ in
+                save()
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+    }
+
+    private var isCustomTargetLanguage: Bool {
+        !draft.targetLanguage.isEmpty
+            && !TargetLanguagePreset.all.contains(draft.targetLanguage)
     }
 
     private var uiLanguageRow: some View {
