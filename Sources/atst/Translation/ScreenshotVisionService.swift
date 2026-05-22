@@ -1,11 +1,22 @@
 import Foundation
 
-/// AI-only screenshot translation. Text translation moved to the new
-/// `TranslationProvider` abstraction (see `OpenAIProvider`,
-/// `GoogleProvider`, `MicrosoftProvider`). Screenshots stay in their own
-/// path because they only ever go to a vision-capable AI model — there is
-/// no API counterpart, no multi-provider fan-out, no cache.
-struct TranslationService {
+/// AI vision call for screenshot translation (Vision OCR OFF path).
+///
+/// This is the one place we still send a multimodal image payload to an
+/// OpenAI-compatible endpoint. Text translation goes through the
+/// `TranslationProvider` abstraction (see `OpenAIProvider`, `GoogleProvider`,
+/// `MicrosoftProvider`); screenshots stay separate because:
+///   - the model needs vision capability (often a different model than the
+///     text one — see `screenshotModel`);
+///   - the message shape is multimodal (`image_url` content part), not
+///     plain text;
+///   - the conventional API providers (Google / Microsoft) can't accept
+///     images, so multi-provider fan-out doesn't apply;
+///   - screenshots aren't cached (each capture is unique).
+///
+/// Renamed from `TranslationService` in P8 because the old name suggested
+/// it was the central translation entrypoint, which is no longer true.
+struct ScreenshotVisionService {
     var configuration: AppConfiguration
 
     func streamTranslateScreenshot(
@@ -20,7 +31,7 @@ struct TranslationService {
         let base64Image = imageData.base64EncodedString()
         let systemContent = screenshotSystemPrompt()
         let userPrompt = screenshotUserPrompt()
-        AppLogger.log("screenshot translation model=\(model) imageBytes=\(imageData.count)")
+        AppLogger.log("screenshot vision model=\(model) imageBytes=\(imageData.count)")
 
         let client = OpenAICompatibleClient(configuration: configuration)
         return try await client.stream(

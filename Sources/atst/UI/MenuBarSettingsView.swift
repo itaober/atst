@@ -188,6 +188,7 @@ struct MenuBarSettingsView: View {
                 generalSection
                 translatorNavSection
                 hotkeysSection
+                screenshotSection
                 cacheSection
                 statsSection
             }
@@ -195,6 +196,122 @@ struct MenuBarSettingsView: View {
             .padding(.vertical, 12)
         }
         .frame(maxHeight: 540)
+    }
+
+    // MARK: - Screenshot section
+
+    /// Screenshot-specific config: Vision OCR toggle + the recognition
+    /// language set used when OCR mode is on. Sits between the hotkeys
+    /// section and the cache section because it's a screenshot-flow
+    /// concern but unrelated to either translation provider.
+    private var screenshotSection: some View {
+        SettingsSection(title: L.pick("Screenshot", "截图")) {
+            SettingsToggleRow(
+                title: L.pick("Use Vision OCR", "使用 Vision OCR"),
+                subtitle: L.pick(
+                    "Recognise text on-device, then translate via the same providers. Falls back to AI vision when no text is found.",
+                    "本地识别文字，再走多 provider 翻译；未识别到文字时自动 fallback 到 AI 视觉。"
+                ),
+                isOn: $draft.screenshotUseVisionOCR,
+                onChange: save
+            )
+            Divider().padding(.horizontal, 10)
+            ocrLanguagesRow
+                .opacity(draft.screenshotUseVisionOCR ? 1 : 0.4)
+                .disabled(!draft.screenshotUseVisionOCR)
+        }
+    }
+
+    /// Recognition-language picker. Selected languages render as removable
+    /// chips inline; a trailing "+" button opens a menu with whatever
+    /// languages aren't yet selected. Tap order = recognition priority,
+    /// so the chip list doubles as a priority list.
+    private var ocrLanguagesRow: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L.pick("Recognition languages", "识别语言"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Text(L.pick(
+                        "Vision tries these in order. Add the languages you usually capture.",
+                        "Vision 按顺序尝试。把常截到的语言加进来即可。"
+                    ))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+            }
+            languageChipsRow
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+    }
+
+    private var languageChipsRow: some View {
+        FlowLayoutWrapping(spacing: 4, runSpacing: 4) {
+            ForEach(draft.ocrLanguages, id: \.self) { code in
+                LanguageChip(
+                    name: displayName(for: code),
+                    onRemove: draft.ocrLanguages.count > 1
+                        ? { removeOCRLanguage(code) }
+                        : nil  // refuse to remove the last one
+                )
+            }
+            addLanguageMenu
+        }
+    }
+
+    private var addLanguageMenu: some View {
+        let unselected = VisionOCRService.supportedLanguages
+            .filter { !draft.ocrLanguages.contains($0.code) }
+        return Menu {
+            if unselected.isEmpty {
+                Text(L.pick("All supported languages added", "已添加所有支持的语言"))
+            } else {
+                ForEach(unselected) { language in
+                    Button(language.displayName) {
+                        draft.ocrLanguages.append(language.code)
+                        save()
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold))
+                Text(L.pick("Add", "添加"))
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(unselected.isEmpty)
+        .opacity(unselected.isEmpty ? 0.4 : 1)
+    }
+
+    private func displayName(for code: String) -> String {
+        VisionOCRService.supportedLanguages.first(where: { $0.code == code })?.displayName ?? code
+    }
+
+    private func removeOCRLanguage(_ code: String) {
+        draft.ocrLanguages.removeAll { $0 == code }
+        if draft.ocrLanguages.isEmpty {
+            // Should be unreachable thanks to the chip's onRemove gate, but
+            // belt-and-braces: never let the user end up with zero
+            // recognition languages because Vision wouldn't recognise
+            // anything at all.
+            draft.ocrLanguages = AppConfiguration.defaultOCRLanguages
+        }
+        save()
     }
 
     /// AI/API entry rows shown on the General page. Each row carries its
@@ -589,6 +706,97 @@ struct MenuBarSettingsView: View {
         draft.aiEnabled = defaults.aiEnabled
         draft.apiEnabled = defaults.apiEnabled
         draft.apiProviders = defaults.apiProviders
+        draft.screenshotUseVisionOCR = defaults.screenshotUseVisionOCR
+        draft.ocrLanguages = defaults.ocrLanguages
         save()
+    }
+}
+
+// MARK: - Language chip + flow layout
+
+/// Small removable pill used to display selected OCR languages. Reads as a
+/// chip / tag — recognisable from countless modern settings UIs. The ×
+/// button only renders when `onRemove` is set, so callers can disable
+/// removal (e.g. for the last remaining language to keep OCR functional).
+private struct LanguageChip: View {
+    let name: String
+    let onRemove: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.primary)
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .bold))
+                        .frame(width: 12, height: 12)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.tertiary)
+                .help(L.pick("Remove", "移除"))
+            }
+        }
+        .padding(.leading, 7)
+        .padding(.trailing, onRemove == nil ? 7 : 4)
+        .padding(.vertical, 3)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
+    }
+}
+
+/// Lightweight flow layout (wrap-to-next-line) used by the OCR language
+/// chips row. Reaches for SwiftUI 6's native `Layout` only on macOS 13+
+/// (which is our deployment target), so the implementation can stay
+/// short.
+private struct FlowLayoutWrapping: Layout {
+    var spacing: CGFloat = 4
+    var runSpacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var totalWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                y += rowHeight + runSpacing
+                x = 0
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            totalWidth = max(totalWidth, x)
+        }
+        return CGSize(width: maxWidth.isFinite ? maxWidth : totalWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                y += rowHeight + runSpacing
+                x = bounds.minX
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

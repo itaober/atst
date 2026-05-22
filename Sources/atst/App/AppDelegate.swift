@@ -71,7 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Prewarm every enabled provider's underlying HTTP host. Each one
     /// dedupes pooled URLSession connections on its own, so calling more
     /// than we need is cheap. Disabled providers are skipped to avoid
-    /// pinging hosts the user doesn't want contacted.
+    /// pinging hosts the user doesn't want contacted. Also pre-warms
+    /// Vision OCR's model load when the user has the OCR mode on, so the
+    /// first screenshot translation doesn't pay the ~200ms cold-start.
     private func prewarmAllProviders(_ configuration: AppConfiguration) {
         if configuration.aiEnabled {
             OpenAICompatibleClient.prewarm(configuration: configuration)
@@ -87,6 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     break
                 }
             }
+        }
+        if configuration.screenshotUseVisionOCR {
+            VisionOCRService.prewarm()
         }
     }
 
@@ -155,6 +160,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTranslationTask = task
     }
 
+    /// Screenshot translation has three possible flows:
+    ///
+    ///   1. **Vision OCR ON (default)**: capture → on-device OCR → text →
+    ///      multi-provider text translation. Same UI as selection translation.
+    ///   2. **Vision OCR ON + no text recognised**: auto-fall-back to AI
+    ///      vision so the user still gets a translation. Requires AI to be
+    ///      enabled AND `screenshotModel` configured.
+    ///   3. **Vision OCR OFF**: capture → AI vision directly. Requires AI
+    ///      to be enabled AND `screenshotModel` configured.
+    ///
+    /// When AI is disabled and OCR can't help, we surface a clear error
+    /// instead of letting the underlying request fail with a generic
+    /// "model not configured" message.
     @objc private func translateScreenshot() {
         AppLogger.log("translateScreenshot invoked")
         currentTranslationTask?.cancel()
@@ -165,9 +183,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let capture = try await self.screenshotProvider.captureInteractiveScreenshot()
                 try Task.checkCancellation()
-                self.viewModel.beginScreenshotTranslation()
-                self.panelController.show(anchor: .point(capture.anchorPoint))
-                await self.viewModel.translateScreenshot(capture)
+                let config = self.settingsStore.configuration
+                if config.screenshotUseVisionOCR {
+                    await self.runOCRThenTranslate(capture: capture)
+                } else {
+                    await self.runAIVisionTranslate(capture: capture)
+                }
                 try Task.checkCancellation()
             } catch is CancellationError {
                 AppLogger.log("translateScreenshot: cancelled by newer request")
@@ -180,6 +201,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         currentScreenshotTask = task
+    }
+
+    /// OCR mode — try local Vision recognition first; on empty result fall
+    /// back to AI vision when it's available, otherwise show a friendly
+    /// "no text + no AI" error. Tooltip shows a transitional "recognising…"
+    /// state while OCR runs, then switches into the regular dual-segment
+    /// text translation UI once text is in hand.
+    private func runOCRThenTranslate(capture: ScreenshotCapture) async {
+        let config = settingsStore.configuration
+        viewModel.beginScreenshotOCR()
+        panelController.show(anchor: .point(capture.anchorPoint))
+
+        let text: String
+        do {
+            text = try await VisionOCRService.recognize(
+                imageData: capture.imageData,
+                languages: config.ocrLanguages
+            )
+        } catch {
+            AppLogger.log("ocr failed, attempting AI vision fallback: \(error)")
+            // OCR threw (e.g. Vision framework error) — try AI vision if
+            // configured, otherwise tell the user why nothing happened.
+            if Task.isCancelled { return }
+            if isAIVisionAvailable(config: config) {
+                await runAIVisionTranslate(capture: capture, alreadyShowing: true)
+            } else {
+                viewModel.showError(AppError.noScreenshotText)
+            }
+            return
+        }
+
+        // OCR call returned. The detached Task inside VisionOCRService
+        // doesn't honour outer cancellation, so re-check here before we
+        // mutate any state — a newer screenshot may already have replaced
+        // ours and we don't want stale text leaking through.
+        if Task.isCancelled {
+            AppLogger.log("ocr completed but task cancelled, discarding result")
+            return
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Require at least 2 chars so a stray punctuation pick doesn't
+        // masquerade as a successful recognition.
+        if trimmed.count < 2 {
+            AppLogger.log("ocr returned no usable text (\(trimmed.count) chars)")
+            if isAIVisionAvailable(config: config) {
+                AppLogger.log("falling back to AI vision")
+                await runAIVisionTranslate(capture: capture, alreadyShowing: true)
+            } else {
+                AppLogger.log("AI vision unavailable, surfacing no-text error")
+                viewModel.showError(AppError.noScreenshotText)
+            }
+            return
+        }
+
+        AppLogger.log("ocr recognized \(trimmed.count) chars, routing to text translation pipeline")
+        let selection = SelectedText(text: trimmed, anchorRect: nil)
+        viewModel.beginTextTranslation(source: trimmed)
+        await viewModel.translateSelection(selection)
+    }
+
+    /// AI vision path — only run when AI is enabled AND a screenshot
+    /// model is configured. The check is duplicated from
+    /// `isAIVisionAvailable` so the error message can be specific (and so
+    /// we don't make the user squint at a generic 'model not configured'
+    /// trace when the real intent was "AI is off").
+    private func runAIVisionTranslate(capture: ScreenshotCapture, alreadyShowing: Bool = false) async {
+        let config = settingsStore.configuration
+        guard isAIVisionAvailable(config: config) else {
+            AppLogger.log("AI vision unavailable (aiEnabled=\(config.aiEnabled), model='\(config.screenshotModel)')")
+            if !alreadyShowing {
+                panelController.show(anchor: .point(capture.anchorPoint))
+            }
+            viewModel.showError(config.aiEnabled
+                ? AppError.noScreenshotModelConfigured
+                : AppError.aiDisabledForVision)
+            return
+        }
+        viewModel.beginScreenshotTranslation()
+        if !alreadyShowing {
+            panelController.show(anchor: .point(capture.anchorPoint))
+        }
+        await viewModel.translateScreenshot(capture)
+    }
+
+    private func isAIVisionAvailable(config: AppConfiguration) -> Bool {
+        guard config.aiEnabled else { return false }
+        let model = config.screenshotModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !model.isEmpty
     }
 
     @objc private func closePanel() {

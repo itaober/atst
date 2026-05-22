@@ -58,6 +58,20 @@ final class TranslatorViewModel: ObservableObject {
         )
     }
 
+    /// Transitional state shown while we're running Vision OCR on the
+    /// freshly-captured screenshot, before any provider has been touched.
+    /// Reuses the `.screenshotLoading` case with a different message so
+    /// the tooltip just shows a spinner + the right text; once OCR is
+    /// done AppDelegate calls `beginTextTranslation(...)` and the state
+    /// transitions into the regular dual-segment text UI.
+    func beginScreenshotOCR() {
+        state = .screenshotLoading(
+            message: L.pick("Recognising text…", "识别截图文字…"),
+            model: "",
+            source: L.pick("Screenshot translation", "截图翻译")
+        )
+    }
+
     /// Kick off the configured text providers in parallel. Cache lookups
     /// happen per-segment up front; on cache miss we spawn a Task per
     /// provider and let each one update its own segment as it completes.
@@ -142,7 +156,7 @@ final class TranslatorViewModel: ObservableObject {
 
     func translateScreenshot(_ capture: ScreenshotCapture) async {
         do {
-            let service = TranslationService(configuration: configuration)
+            let service = ScreenshotVisionService(configuration: configuration)
             let raw = try await service.streamTranslateScreenshot(capture.imageData) { [weak self] delta in
                 self?.appendScreenshotDelta(delta)
             }

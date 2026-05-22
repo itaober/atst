@@ -52,6 +52,18 @@ struct AppConfiguration: Codable, Equatable {
     var smartExplanationEnabled: Bool
     var smartExplanationExpandedByDefault: Bool
 
+    // MARK: - Screenshot
+    /// When on (default), screenshot translation runs macOS Vision OCR
+    /// first to extract text, then feeds the text through the regular
+    /// multi-provider pipeline (API rows + AI segment). When off, the
+    /// screenshot bytes are sent directly to the configured AI vision
+    /// model. We auto-fall-back to AI vision when OCR finds no text.
+    var screenshotUseVisionOCR: Bool
+    /// BCP-47 codes Vision should try when recognising. Order matters —
+    /// Vision prefers earlier entries on ambiguity. Defaults to
+    /// Simplified Chinese + English + Japanese.
+    var ocrLanguages: [String]
+
     // MARK: - Cross-cutting
     var appearanceMode: AppearanceMode
     var cacheEnabled: Bool
@@ -64,6 +76,11 @@ struct AppConfiguration: Codable, Equatable {
         .init(kind: .google, enabled: true),
         .init(kind: .microsoft, enabled: true)
     ]
+
+    /// Default screenshot OCR languages — Simplified Chinese, English,
+    /// Japanese. Covers the bulk of typical user input; settings lets the
+    /// user add/remove from the full curated list.
+    static let defaultOCRLanguages: [String] = ["zh-Hans", "en-US", "ja-JP"]
 
     static let defaultConfig = AppConfiguration(
         // AI is off by default — it requires the user to configure base URL /
@@ -88,7 +105,9 @@ struct AppConfiguration: Codable, Equatable {
         cacheTTLDays: 90,
         cacheMaxEntries: 2000,
         textHotKey: .defaultText,
-        screenshotHotKey: .defaultScreenshot
+        screenshotHotKey: .defaultScreenshot,
+        screenshotUseVisionOCR: true,
+        ocrLanguages: defaultOCRLanguages
     )
 
     static let storageKey = "atst.configuration.v1"
@@ -113,7 +132,9 @@ struct AppConfiguration: Codable, Equatable {
         cacheTTLDays: Int = 90,
         cacheMaxEntries: Int = 2000,
         textHotKey: KeyboardShortcutConfig = .defaultText,
-        screenshotHotKey: KeyboardShortcutConfig = .defaultScreenshot
+        screenshotHotKey: KeyboardShortcutConfig = .defaultScreenshot,
+        screenshotUseVisionOCR: Bool = true,
+        ocrLanguages: [String] = AppConfiguration.defaultOCRLanguages
     ) {
         self.aiEnabled = aiEnabled
         self.apiEnabled = apiEnabled
@@ -135,6 +156,8 @@ struct AppConfiguration: Codable, Equatable {
         self.cacheMaxEntries = cacheMaxEntries
         self.textHotKey = textHotKey
         self.screenshotHotKey = screenshotHotKey
+        self.screenshotUseVisionOCR = screenshotUseVisionOCR
+        self.ocrLanguages = ocrLanguages
     }
 
     init(from decoder: Decoder) throws {
@@ -171,6 +194,13 @@ struct AppConfiguration: Codable, Equatable {
         cacheMaxEntries = try container.decodeIfPresent(Int.self, forKey: .cacheMaxEntries) ?? defaults.cacheMaxEntries
         textHotKey = try container.decodeIfPresent(KeyboardShortcutConfig.self, forKey: .textHotKey) ?? defaults.textHotKey
         screenshotHotKey = try container.decodeIfPresent(KeyboardShortcutConfig.self, forKey: .screenshotHotKey) ?? defaults.screenshotHotKey
+        screenshotUseVisionOCR = try container.decodeIfPresent(Bool.self, forKey: .screenshotUseVisionOCR) ?? defaults.screenshotUseVisionOCR
+        ocrLanguages = try container.decodeIfPresent([String].self, forKey: .ocrLanguages) ?? defaults.ocrLanguages
+        if ocrLanguages.isEmpty {
+            // Healing — if a user somehow saved an empty list, restore the
+            // default so OCR still works without manual intervention.
+            ocrLanguages = defaults.ocrLanguages
+        }
     }
 
     var chatCompletionsURL: URL? {

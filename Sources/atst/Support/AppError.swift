@@ -15,6 +15,11 @@ enum AppError: LocalizedError {
     case screenRecordingPermissionRequired
     case screenshotCancelled
     case screenshotFailed(String)
+    /// User has Vision OCR disabled AND AI translation disabled, so there's
+    /// no path to translate a screenshot. Surfaced when the user fires the
+    /// screenshot hotkey in this configuration; the recovery suggestion
+    /// tells them which switch to flip.
+    case aiDisabledForVision
 
     var errorDescription: String? {
         switch self {
@@ -52,6 +57,11 @@ enum AppError: LocalizedError {
             return L.pick("Screenshot cancelled", "已取消截图")
         case .screenshotFailed:
             return L.pick("Screenshot failed", "截图失败")
+        case .aiDisabledForVision:
+            return L.pick(
+                "Can't translate screenshot — both AI and Vision OCR are off",
+                "无法翻译截图——AI 翻译和 Vision OCR 都已关闭"
+            )
         }
     }
 
@@ -101,8 +111,8 @@ enum AppError: LocalizedError {
             )
         case .noScreenshotText:
             return L.pick(
-                "Open /tmp/atst-last-screenshot.png to see what was sent — if the text is there, the vision model may have refused. Try a different screenshot model.",
-                "打开 /tmp/atst-last-screenshot.png 看实际发出去的图——如果里面确实有文字，多半是视觉模型识别失败，换一个更强的截图模型试试。"
+                "Vision OCR didn't find text and AI vision isn't available. Open /tmp/atst-last-screenshot.png to inspect the capture, add languages in Settings → Screenshot, or enable AI with a vision model.",
+                "Vision OCR 未识别到文字，且 AI 视觉不可用。可打开 /tmp/atst-last-screenshot.png 查看截图，到 设置 → 截图 增加识别语言，或启用 AI 翻译并配置支持图像的模型。"
             )
         case .visionModelLikelyUnsupported(let model):
             return L.pick(
@@ -118,6 +128,11 @@ enum AppError: LocalizedError {
             return nil
         case .screenshotFailed(let detail):
             return detail
+        case .aiDisabledForVision:
+            return L.pick(
+                "Enable Vision OCR in Settings → Screenshot (uses Google / Microsoft), or enable AI translation with a vision-capable screenshot model.",
+                "请在 设置 → 截图 中启用 Vision OCR（走 Google / Microsoft），或启用 AI 翻译并配置支持图像的截图模型。"
+            )
         }
     }
 }
