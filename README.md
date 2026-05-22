@@ -1,109 +1,168 @@
-# tst
+<div align="center">
 
-轻量级 macOS 划词/截图翻译工具，面向开发者阅读英文技术文档场景。当前版本使用 Swift + SwiftUI + AppKit，无第三方依赖，AI 服务由用户在菜单栏弹层中自行配置。
+# atst
 
-## 产品效果
+**ai-text-select-translate** — a tiny menu-bar translator for macOS
 
-- `Option + D`：翻译当前选中文本，在选区/鼠标右侧弹出轻量浮窗。
-- `Option + S`：调用 macOS 原生区域截图，截图完成后在结束位置右侧弹出轻量浮窗。
-- 浮窗支持滚动、复制结果、关闭。
-- 顶部菜单栏有一个 `tst` 图标，点击后直接配置目标语言、模型和 API。
-- 应用以 menu bar app 方式运行，不常驻 Dock。
+Hit a hotkey, get a translation. Works **out of the box** with built-in Google + Microsoft adapters, and unlocks AI-grade dictionary / explanation when you bring your own model.
 
-## 当前 AI 接入方式
+[简体中文](./README.zh-CN.md) · [Install](#install) · [Usage](#usage) · [Features](#features)
 
-当前实现的是 OpenAI-compatible Chat Completions：
+</div>
 
-- Base URL：例如 `http://localhost:11434/v1`、`https://api.example.com/v1`
-- API Key：可为空，随本地配置保存
-- 翻译模型：用于划词翻译
-- 截图翻译模型：用于图片输入，必须是支持 vision/image input 的模型
-- 系统提示词：用于控制翻译风格
+---
 
-自定义翻译 API 已在 Settings 中预留入口，但还没有实现。
+## Highlights
 
-## 目录结构
+- ⚡ **One-hotkey translation** — press `⌥D` on any selected text, anywhere in macOS, and a tooltip appears in ~200ms
+- 🖼️ **Screenshot translation** — press `⌥S`, drag a region, get the translation. On-device Vision OCR by default (fast + private + free); falls back to AI vision if you've configured one
+- 🔀 **Multi-source side-by-side** — Google and Microsoft results stack above your AI result, so you can cross-check at a glance
+- 🧠 **AI dictionary mode** — for single words, AI providers can return multiple meanings, IPA phonetics, and a short usage explanation
+- 📌 **Pin as note** — freeze a translation into a floating sticky note for later reference
+- 💾 **Local cache** — repeat lookups hit a JSON cache, scoped per provider; configurable TTL and size cap
+- 🌐 **Bilingual UI** — auto English / Chinese based on system language
+- 🆓 **Zero-config friendly** — works on a fresh install with no API keys (Google + Microsoft adapters); add an OpenAI-compatible endpoint when you want richer output
 
-```text
-.
-├── Package.swift
-├── README.md
-├── Scripts
-│   └── build-app.sh
-└── Sources
-    └── tst
-        ├── App
-        │   ├── AppConfiguration.swift
-        │   ├── AppDelegate.swift
-        │   ├── SettingsStore.swift
-        │   └── TSTApp.swift
-        ├── HotKey
-        │   └── HotKeyManager.swift
-        ├── Selection
-        │   ├── ScreenshotProvider.swift
-        │   └── SelectedTextProvider.swift
-        ├── State
-        │   └── TranslatorViewModel.swift
-        ├── Support
-        │   └── AppError.swift
-        ├── Translation
-        │   ├── OpenAICompatibleClient.swift
-        │   └── TranslationService.swift
-        └── UI
-            ├── FloatingPanelController.swift
-            ├── MenuBarSettingsView.swift
-            ├── StatusBarController.swift
-            └── TranslationResultView.swift
-```
+---
 
-## 本地运行
+## Install
+
+### Download the latest release
+
+1. Grab the latest `atst.dmg` from the [Releases page](https://github.com/itaober/atst/releases)
+2. Open the DMG and drag **atst** into your `Applications` folder
+3. Launch atst — a small **`atst`** label appears in your menu bar (top-right of the screen)
+4. macOS will prompt for **Accessibility** permission the first time you press a hotkey — grant it in System Settings → Privacy & Security → Accessibility
+
+> **Heads up**: because atst is a self-signed app (no Apple Developer ID yet), the first launch may show "atst can't be opened because it is from an unidentified developer". Right-click the app → **Open** → **Open anyway**, or run `xattr -d com.apple.quarantine /Applications/atst.app` once.
+
+### Build from source
+
+Requires **macOS 13+** and **Swift 5.9+** (Xcode 15 / Command Line Tools).
 
 ```bash
-cd /Users/t.yang/Workspace/itaober/tst
-swift build
-swift run tst
+git clone https://github.com/itaober/atst.git
+cd atst
+
+# Quick dev build
+swift run atst
+
+# Build a packaged .app bundle (with icon + Info.plist + codesign)
+bash Scripts/build-app.sh
+open .build/atst.app
+
+# Build a DMG installer
+bash Scripts/build-dmg.sh
+open .build/atst.dmg
 ```
 
-构建 `.app`：
+---
 
-```bash
-chmod +x Scripts/build-app.sh
-Scripts/build-app.sh
-open .build/tst.app
-```
+## Usage
 
-首次使用：
+### Hotkeys
 
-1. 点击 macOS 顶部菜单栏里的 `tst` 图标
-2. 填写目标语言、Base URL、API Key、翻译模型、截图翻译模型
-3. 保存
-4. 在系统设置中授予必要权限
+| Hotkey | Action |
+|---|---|
+| `⌥D` | Translate the currently selected text |
+| `⌥S` | Screenshot a region and translate the text it contains |
 
-## 权限
+Both hotkeys are reconfigurable in **Settings → Hotkeys**.
 
-- 划词翻译需要 `辅助功能` 权限，用于读取当前选区和发送复制快捷键兜底。
-- 截图翻译会调用 macOS 原生 `screencapture`，系统可能要求 `屏幕录制` 权限。
+### The translation tooltip
 
-## 已知兼容性边界
+When a translation appears, you'll see one or two sections:
 
-划词取词采用两步：
+- **Top — API results** (Google, Microsoft): fast and free, no API key required
+- **Bottom — AI result** (if enabled): richer output with multiple meanings, IPA phonetics, and explanations for technical terms
 
-1. Accessibility 读取 `AXSelectedText`。
-2. 失败后临时发送 `Cmd + C`，读取剪贴板，再恢复原剪贴板内容。
+Each row has its own copy button. The whole tooltip is **draggable from its header** if you want to move it out of the way; click outside to dismiss. Click the pin (📌) in the header to freeze it into a sticky note.
 
-因此以下场景可能不兼容或表现不稳定：
+### Translator settings
 
-- 密码框、受保护输入框。
-- 禁止复制内容的 PDF/网页/阅读器。
-- 某些自绘控件、游戏、远程桌面、虚拟机窗口。
-- 部分浏览器页面中的复杂 Web 编辑器。
-- 当前应用拦截了 `Cmd + C`，或剪贴板被安全软件接管。
+Click the **`atst`** label in your menu bar to open the settings panel.
 
-截图翻译依赖你配置的截图模型是否支持图片输入；如果模型不支持 vision，会返回 API 错误。
+The General page has two toggles:
 
-## 后续扩展预留
+- ☑️ **API Translation** (on by default) — Google + Microsoft. Zero config.
+- ☐ **AI Translation** (off by default) — OpenAI-compatible endpoint. Configure base URL + key + model in the AI subpage.
 
-- OCR：可在 `Selection` 下新增 OCR provider。
-- 历史记录：可新增 `Storage` 模块落本地 SQLite/JSON。
-- 在线翻译 fallback：可在 `Translation` 下新增服务实现。
-- 自定义翻译 API：Settings 已预留开关，后续可接非 OpenAI-compatible 协议。
+#### AI configuration (optional)
+
+Inside **AI Translation** subpage:
+
+- **Base URL** — any OpenAI-compatible endpoint, e.g. `https://api.openai.com/v1`, `http://localhost:11434/v1` (Ollama), `https://generativelanguage.googleapis.com/v1beta/openai/` (Gemini OpenAI-compat)
+- **API Key** — kept locally in `~/Library/Preferences/dev.local.atst.plist`
+- **Translation Model** — model name to use for selection translation (e.g. `gpt-4o-mini`, `qwen2.5:7b`)
+- **Screenshot Model** — vision-capable model used when **Vision OCR** is OFF (e.g. `gpt-4o`, `claude-3.5-sonnet`)
+- **Phonetic** — append IPA to single-word lookups
+- **Smart Explanation** — add a dictionary-style explanation block (idioms, proper-noun definitions, etc.)
+- **Translation Prompts** — fully editable system + smart-explanation prompts
+
+#### Screenshot OCR settings
+
+The **Screenshot** section in the General page controls how `⌥S` works:
+
+- ☑️ **Use Vision OCR** (on by default) — recognise text on-device with macOS Vision (no AI needed!), then translate via the selected providers
+- ☐ **Use Vision OCR** OFF — send the screenshot directly to your AI vision model
+
+Add or remove recognition languages from the chip row below. Default: Simplified Chinese + English + Japanese.
+
+---
+
+## Features
+
+### Translation providers
+
+| Provider | Key required | Free | Streaming | Multi-meaning | Phonetic | Explanation |
+|---|---|---|---|---|---|---|
+| Google (built-in) | ❌ | ✅ | — | ❌ | ❌ | ❌ |
+| Microsoft (built-in) | ❌ | ✅ | — | ❌ | ❌ | ❌ |
+| OpenAI-compatible | ✅ | depends | ✅ | ✅ | ✅ | ✅ |
+
+### Other goodies
+
+- **Smart tooltip placement** — Web-style flip algorithm; tooltip never gets pushed off-screen or covers your selection
+- **Cache stats** — see how many entries are cached and how much disk they're using, with a one-click clear button
+- **Untranslatable detection** — proper nouns / brands / misspellings get a 🔘 marker and skip the cache
+- **Theme** — Auto / Light / Dark, applied app-wide
+
+---
+
+## Requirements
+
+- macOS **13.0** (Ventura) or later
+- A handful of MB of disk for the local cache
+- For AI features: any OpenAI-compatible endpoint (paid or local-LLM)
+
+---
+
+## Privacy
+
+- atst is a **local app**. No telemetry, no analytics, no crash reporters.
+- API providers (Google, Microsoft, your AI endpoint) receive only the text you trigger a translation for.
+- Cache lives at `~/Library/Caches/dev.local.atst/translations.json`. Settings live at `~/Library/Preferences/dev.local.atst.plist`. Delete either at any time.
+
+---
+
+## Roadmap
+
+Things on the radar (open an issue if you'd like to vote one up):
+
+- [ ] Custom HTTP translation providers (template-driven; bring your own DeepL / Lingva / Libretranslate)
+- [ ] Drag-to-reorder API providers
+- [ ] Translation history with full-text search
+- [ ] Streaming token-by-token rendering for AI providers that support it
+- [ ] Apple Notarization + proper code signing (no more right-click → Open)
+
+---
+
+## License
+
+MIT — see [LICENSE](./LICENSE) for details.
+
+## Acknowledgments
+
+- macOS [Vision framework](https://developer.apple.com/documentation/vision) for the OCR engine
+- The OpenAI Chat Completions protocol — adopted by virtually every modern LLM endpoint
+- Built with [Claude Code](https://claude.com/claude-code) in collaboration with the author
