@@ -8,6 +8,10 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 (no changes yet)
 
+## v0.2.0
+
+- Translation tooltips and pinned notes now use native Liquid Glass on macOS 26+ when built with Swift 6.2+, while older systems automatically keep the existing AppKit tooltip material fallback
+
 ## v0.1.3
 
 - General settings layout unified: every control in the section now aligns to a single right-edge guideline; target-language picker is upsized so its value reads as clearly as the row label
