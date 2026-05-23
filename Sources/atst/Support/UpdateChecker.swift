@@ -18,13 +18,6 @@ final class UpdateChecker: ObservableObject {
     /// Snapshot of the most recent GitHub release fetch. `nil` until the
     /// first successful call.
     @Published private(set) var latest: ReleaseInfo?
-    /// `true` while a check is in flight. UI can dim the "check now"
-    /// button while this is on.
-    @Published private(set) var isChecking: Bool = false
-    /// Surface for the last error, when the user manually triggered a
-    /// check and we want to tell them why nothing happened. Cleared on
-    /// success.
-    @Published private(set) var lastError: String?
 
     struct ReleaseInfo: Equatable {
         let version: String      // e.g. "0.1.4" (no leading "v")
@@ -41,12 +34,10 @@ final class UpdateChecker: ObservableObject {
     private let session = URLSession.shared
     private lazy var apiURL = URL(string: "https://api.github.com/repos/\(Branding.githubRepoPath)/releases/latest")!
 
-    /// Fire-and-forget. Caller doesn't await; UI listens to `@Published`.
-    /// Respects the cache TTL — calling this on every settings-open is
-    /// cheap.
-    func checkInBackground(force: Bool = false) {
-        if !force,
-           let last = lastCheckedAt,
+    /// Fire-and-forget. Caller doesn't await; UI listens to `@Published latest`.
+    /// Respects the cache TTL — calling this on every settings-open is cheap.
+    func checkInBackground() {
+        if let last = lastCheckedAt,
            Date().timeIntervalSince(last) < cacheTTL,
            latest != nil {
             return
@@ -64,9 +55,6 @@ final class UpdateChecker: ObservableObject {
     }
 
     private func performCheck() async {
-        isChecking = true
-        defer { isChecking = false }
-
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 10
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -74,11 +62,10 @@ final class UpdateChecker: ObservableObject {
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                lastError = "Invalid response"
+                AppLogger.log("update check: invalid response")
                 return
             }
             guard (200..<300).contains(http.statusCode) else {
-                lastError = "GitHub HTTP \(http.statusCode)"
                 AppLogger.log("update check: HTTP \(http.statusCode)")
                 return
             }
@@ -88,7 +75,7 @@ final class UpdateChecker: ObservableObject {
                   let tagName = dict["tag_name"] as? String,
                   let urlString = dict["html_url"] as? String,
                   let url = URL(string: urlString) else {
-                lastError = "Unexpected response shape"
+                AppLogger.log("update check: unexpected response shape")
                 return
             }
             let version = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
@@ -100,14 +87,9 @@ final class UpdateChecker: ObservableObject {
                 publishedAt: publishedAt,
                 htmlURL: url
             )
-            lastError = nil
             lastCheckedAt = Date()
             AppLogger.log("update check: latest=\(version) local=\(Branding.releaseVersion ?? "dev") hasUpdate=\(hasUpdate)")
-        } catch let urlError as URLError {
-            lastError = urlError.localizedDescription
-            AppLogger.log("update check failed: \(urlError.localizedDescription)")
         } catch {
-            lastError = error.localizedDescription
             AppLogger.log("update check failed: \(error)")
         }
     }

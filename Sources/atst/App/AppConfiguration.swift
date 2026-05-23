@@ -244,10 +244,6 @@ struct AppConfiguration: Codable, Equatable {
         return config
     }
 
-    func persistedCopy() -> AppConfiguration {
-        self
-    }
-
     /// Subset of `apiProviders` that's currently enabled AND maps to a
     /// known built-in provider. Order preserved from settings.
     var enabledAPIProviderKinds: [TranslationProviderID] {

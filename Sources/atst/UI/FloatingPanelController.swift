@@ -17,7 +17,6 @@ final class FloatingPanelController {
     private lazy var hostingController: NSHostingController<TranslationResultView> = makeHostingController()
     private lazy var panel: NSPanel = makePanel()
     private var pinObserver: AnyCancellable?
-    private var lastTopLeft: NSPoint?
     private var spaceChangeObserver: NSObjectProtocol?
     private var outsideClickGlobalMonitor: Any?
     private var outsideClickLocalMonitor: Any?
@@ -58,7 +57,6 @@ final class FloatingPanelController {
         ensureSized()
 
         let topLeft = topLeftPoint(for: anchor, size: panel.frame.size)
-        lastTopLeft = topLeft
 
         if !panel.isVisible {
             panel.alphaValue = 0
@@ -90,7 +88,6 @@ final class FloatingPanelController {
 
     func close() {
         pinObserver = nil
-        lastTopLeft = nil
         stopDismissalMonitors()
         stopPanelMoveObserver()
         viewModel.pinned = false
@@ -456,14 +453,12 @@ private final class TooltipPanel: NSPanel {
 
 @MainActor
 private final class PinnedNoteController {
-    private let snapshot: PinnedNoteSnapshot
     private let panel: NSPanel
     private let hostingController: NSHostingController<PinnedNoteView>
 
     var onUserClose: (() -> Void)?
 
     init(snapshot: PinnedNoteSnapshot) {
-        self.snapshot = snapshot
         var dismissAction: () -> Void = {}
         let view = PinnedNoteView(snapshot: snapshot) {
             dismissAction()

@@ -229,11 +229,6 @@ struct TooltipDescription: View {
     }
 }
 
-// (BouncingDots removed — at the small sizes that fit the tooltip, the
-// dots' bounce was barely visible and the implementation looked broken on
-// screen. We fall back to plain `ProgressView` spinners for every loading
-// state; the spinner already conveys "in flight" the conventional way.)
-
 // MARK: - Shared sizing rules
 
 /// Width rules used by both the live tooltip and pinned notes.

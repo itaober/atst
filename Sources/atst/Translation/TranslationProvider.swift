@@ -9,26 +9,6 @@ enum TranslationProviderID: String, Codable, CaseIterable, Hashable {
     case google
     /// Built-in Microsoft Translator adapter (unofficial edge endpoint).
     case microsoft
-
-    /// Whether this provider can stream partial results (AI) vs. a single
-    /// terminal result (built-in HTTP adapters). Used by the UI to decide
-    /// when to render a spinner vs. an in-progress translation.
-    var isStreaming: Bool {
-        switch self {
-        case .ai: return true
-        case .google, .microsoft: return false
-        }
-    }
-
-    /// Whether the provider returns rich structured output (multi-meaning,
-    /// phonetic, description, model-reported untranslatable flag). Only AI
-    /// can; API providers always return a flat string.
-    var supportsRichOutput: Bool {
-        switch self {
-        case .ai: return true
-        case .google, .microsoft: return false
-        }
-    }
 }
 
 /// Whether the provider is "AI" (rich, configurable, model-bound) or "API"
@@ -74,14 +54,13 @@ protocol TranslationProvider: Sendable {
     var displayName: String { get }
     /// Optional model identifier (only AI sets this — APIs leave it nil).
     var modelHint: String? { get }
-    /// Target language string as the user typed it ("简体中文" / "English" /
-    /// "ja"). Each provider is responsible for normalising to whatever its
-    /// backend wants (BCP-47 for HTTP APIs, freeform prompt text for AI).
-    var targetLanguage: String { get }
 
     /// Translate `text`. Implementations should:
     ///   - emit at least one final emission on success;
     ///   - propagate errors via stream termination (`throw`);
     ///   - respect Task cancellation.
+    /// The target language is bound at provider construction time —
+    /// each impl normalises it internally (BCP-47 for HTTP APIs, freeform
+    /// prompt text for AI).
     func translate(text: String) -> AsyncThrowingStream<TranslationProviderEmission, Error>
 }

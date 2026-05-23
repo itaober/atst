@@ -1,36 +1,18 @@
 import AppKit
-import ApplicationServices
 import Carbon
 
 @MainActor
 final class SelectedTextProvider {
-    private var didRequestAccessibilityPermission = false
-
+    /// Reads the current selection by simulating ⌘C and snooping the
+    /// pasteboard. Assumes Accessibility is already granted —
+    /// `AppDelegate.translateSelection` gates on
+    /// `PermissionChecker.isAccessibilityTrusted` before invoking this,
+    /// so the inner check is unnecessary here.
     func selectedText() async throws -> SelectedText {
-        guard ensureAccessibilityPermission() else {
-            throw AppError.accessibilityPermissionRequired
-        }
-
         if let text = try await readSelectedTextUsingCopyShortcut() {
             return SelectedText(text: text, anchorRect: nil)
         }
-
         throw AppError.noSelectedText
-    }
-
-    private func ensureAccessibilityPermission() -> Bool {
-        if AXIsProcessTrusted() {
-            return true
-        }
-
-        guard !didRequestAccessibilityPermission else {
-            return false
-        }
-
-        didRequestAccessibilityPermission = true
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [promptKey: true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
     }
 
     private func readSelectedTextUsingCopyShortcut() async throws -> String? {

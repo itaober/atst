@@ -1,3 +1,5 @@
+import AppKit
+import Carbon
 import SwiftUI
 
 private enum SettingsRoute: Hashable {
@@ -20,14 +22,17 @@ struct MenuBarSettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var cache: TranslationCache = .shared
-    var onTranslateSelection: () -> Void
-    var onTranslateScreenshot: () -> Void
     var onQuit: () -> Void
 
     @State private var draft: AppConfiguration
     @State private var saveError: String?
     @State private var accessibilityTrusted = PermissionChecker.isAccessibilityTrusted
     @State private var screenRecordingTrusted = PermissionChecker.isScreenRecordingTrusted
+    /// `IsSecureEventInputEnabled()` — when another app puts the system
+    /// into Secure Keyboard Entry mode, our hotkeys silently break even
+    /// though all three TCC perms are granted. Polling this lets the
+    /// settings UI surface a warning so the user knows where to look.
+    @State private var secureInputActive = IsSecureEventInputEnabled()
     @State private var recordingTarget: ShortcutTarget?
     @State private var shortcutMonitor: Any?
     @State private var permissionPollTask: Task<Void, Never>?
@@ -39,14 +44,10 @@ struct MenuBarSettingsView: View {
     init(
         settingsStore: SettingsStore,
         updateChecker: UpdateChecker,
-        onTranslateSelection: @escaping () -> Void,
-        onTranslateScreenshot: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         self.updateChecker = updateChecker
-        self.onTranslateSelection = onTranslateSelection
-        self.onTranslateScreenshot = onTranslateScreenshot
         self.onQuit = onQuit
         _draft = State(initialValue: settingsStore.configuration)
     }
@@ -76,7 +77,16 @@ struct MenuBarSettingsView: View {
             footer
         }
         .frame(width: panelWidth)
-        .background(.regularMaterial)
+        // Match the live tooltip + pinned notes: native Liquid Glass on
+        // macOS 26+ with Swift 6.2+, falling back to the AppKit `.menu`
+        // material on older systems. Border `.none` because the panel's
+        // NSPanel chrome already provides shadow + rounded edges via the
+        // host view layer (StatusBarController.makePanel).
+        .modifier(AdaptiveGlassSurface(
+            cornerRadius: 14,
+            fallbackMaterial: .menu,
+            border: .none
+        ))
         .onReceive(settingsStore.$configuration) { configuration in
             draft = configuration
         }
@@ -588,6 +598,57 @@ struct MenuBarSettingsView: View {
     // MARK: - Other sections (Permissions / General / Hotkeys)
 
     private var permissionsSection: some View {
+        // Three permissions, each gating a specific capability. Order is
+        // chosen so the most user-visible feature (hotkeys) sits in the
+        // middle — both other rows make less sense without it.
+        VStack(alignment: .leading, spacing: 8) {
+            if secureInputActive {
+                secureInputWarning
+            }
+            permissionsSectionInner
+        }
+    }
+
+    /// Banner shown when some other app on the system has enabled macOS's
+    /// `SecureEventInput` — most often 1Password during autofill, Terminal
+    /// with "Secure Keyboard Entry" checked, or a focused password field.
+    /// When secure input is active **every** CGEventTap stops receiving
+    /// keyDown events globally, so atst's hotkeys silently break even
+    /// though every TCC perm is granted. The warning saves the user from
+    /// chasing a non-existent permission bug.
+    private var secureInputWarning: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .foregroundStyle(.orange)
+                .font(.system(size: 14, weight: .semibold))
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L.pick(
+                    "Hotkeys disabled by another app",
+                    "快捷键被其他 app 拦截了"
+                ))
+                .font(.system(size: 12, weight: .semibold))
+                Text(L.pick(
+                    "macOS Secure Keyboard Entry is active (commonly 1Password autofill, Terminal's \"Secure Keyboard Entry\", or a focused password field). Quit / disable in that app to restore atst's hotkeys.",
+                    "macOS 的安全键盘输入正被其他 app 占用（常见：1Password 自动填充、勾选了\"安全键盘输入\"的 Terminal、或当前的密码框）。关闭或退出该 app 即可恢复。"
+                ))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private var permissionsSectionInner: some View {
         SettingsSection(title: L.pick("Permissions", "权限")) {
             SettingsPermissionRow(
                 title: L.pick("Selection translation", "划词翻译"),
@@ -640,25 +701,36 @@ struct MenuBarSettingsView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
             Spacer(minLength: 8)
-            Picker("", selection: $draft.targetLanguage) {
-                if isCustomTargetLanguage {
-                    Text(draft.targetLanguage).tag(draft.targetLanguage)
-                    Divider()
+            // Wrap the Picker in a fixed-width right-aligned container.
+            // `.menu`-style Pickers don't stretch to fill `.frame(width:)`
+            // — the popup button hugs its longest option label — so a
+            // bare `.frame(width: 170)` would render the button at the
+            // *leading* edge, leaving the right edge short of the
+            // segmented controls below it. Wrapping in an HStack with a
+            // leading Spacer and an outer fixed-width container pins the
+            // button's right edge to the same x as the other rows.
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Picker("", selection: $draft.targetLanguage) {
+                    if isCustomTargetLanguage {
+                        Text(draft.targetLanguage).tag(draft.targetLanguage)
+                        Divider()
+                    }
+                    ForEach(TargetLanguagePreset.all, id: \.self) { preset in
+                        Text(preset).tag(preset)
+                    }
                 }
-                ForEach(TargetLanguagePreset.all, id: \.self) { preset in
-                    Text(preset).tag(preset)
+                .labelsHidden()
+                // .small (not .mini): the target language is the most-changed
+                // value in this section, so its text ("简体中文" etc.) should
+                // be as readable as the row label next to it.
+                .controlSize(.small)
+                .fixedSize()
+                .onChange(of: draft.targetLanguage) { _ in
+                    save()
                 }
             }
-            .labelsHidden()
-            // .small (not .mini): the target language is the most-changed
-            // value in this section, so its text ("简体中文" etc.) should
-            // be as readable as the row label next to it. .mini made the
-            // popup feel diminutive against the 12pt left-side label.
-            .controlSize(.small)
-            .frame(width: generalControlWidth)
-            .onChange(of: draft.targetLanguage) { _ in
-                save()
-            }
+            .frame(width: generalControlWidth, alignment: .trailing)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -707,18 +779,30 @@ struct MenuBarSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Picker("", selection: $draft.uiLanguage) {
-                Text(L.pick("Auto", "自动")).tag(UILanguage.auto)
-                Text("English").tag(UILanguage.english)
-                Text("中文").tag(UILanguage.chinese)
+            // Same right-aligned container as targetLanguageRow:
+            // `.pickerStyle(.segmented).frame(width:)` doesn't force the
+            // control to expand to the requested width — it hugs its
+            // segment-content widths instead, so a row with longer
+            // labels (e.g. "English") would render visibly wider than a
+            // row with shorter labels (e.g. "浅色"). Wrapping in a
+            // Spacer + fixed-width trailing container pins the right
+            // edge of every General-section control to the same x.
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Picker("", selection: $draft.uiLanguage) {
+                    Text(L.pick("Auto", "自动")).tag(UILanguage.auto)
+                    Text("English").tag(UILanguage.english)
+                    Text("中文").tag(UILanguage.chinese)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.mini)
+                .fixedSize()
+                .onChange(of: draft.uiLanguage) { _ in
+                    save()
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.mini)
-            .frame(width: generalControlWidth)
-            .onChange(of: draft.uiLanguage) { _ in
-                save()
-            }
+            .frame(width: generalControlWidth, alignment: .trailing)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -742,18 +826,26 @@ struct MenuBarSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Picker("", selection: $draft.appearanceMode) {
-                Text(L.pick("Auto", "自动")).tag(AppearanceMode.auto)
-                Text(L.pick("Light", "浅色")).tag(AppearanceMode.light)
-                Text(L.pick("Dark", "深色")).tag(AppearanceMode.dark)
+            // Same right-aligned container as uiLanguageRow — segmented
+            // pickers hug their segment-content widths, so different
+            // labels per row produce different physical widths unless
+            // pinned to a trailing-aligned fixed-width parent.
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Picker("", selection: $draft.appearanceMode) {
+                    Text(L.pick("Auto", "自动")).tag(AppearanceMode.auto)
+                    Text(L.pick("Light", "浅色")).tag(AppearanceMode.light)
+                    Text(L.pick("Dark", "深色")).tag(AppearanceMode.dark)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.mini)
+                .fixedSize()
+                .onChange(of: draft.appearanceMode) { _ in
+                    save()
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.mini)
-            .frame(width: generalControlWidth)
-            .onChange(of: draft.appearanceMode) { _ in
-                save()
-            }
+            .frame(width: generalControlWidth, alignment: .trailing)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -840,6 +932,7 @@ struct MenuBarSettingsView: View {
     private func refreshPermissionStatus() {
         accessibilityTrusted = PermissionChecker.isAccessibilityTrusted
         screenRecordingTrusted = PermissionChecker.isScreenRecordingTrusted
+        secureInputActive = IsSecureEventInputEnabled()
     }
 
     private func startPermissionPolling() {

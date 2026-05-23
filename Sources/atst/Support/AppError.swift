@@ -3,7 +3,6 @@ import Foundation
 enum AppError: LocalizedError {
     case accessibilityPermissionRequired
     case noSelectedText
-    case hotKeyRegistrationFailed(OSStatus)
     case invalidAIBaseURL(String)
     case noTextModelConfigured
     case noScreenshotModelConfigured
@@ -27,11 +26,6 @@ enum AppError: LocalizedError {
             return L.pick("Accessibility permission required", "需要辅助功能权限")
         case .noSelectedText:
             return L.pick("No selected text", "没有取到选中的文本")
-        case .hotKeyRegistrationFailed(let status):
-            return L.pick(
-                "Global hotkey registration failed (OSStatus \(status))",
-                "全局快捷键注册失败（OSStatus \(status)）"
-            )
         case .invalidAIBaseURL(let url):
             return L.pick("Invalid AI Base URL: \(url)", "AI Base URL 无效：\(url)")
         case .noTextModelConfigured:
@@ -76,11 +70,6 @@ enum AppError: LocalizedError {
             return L.pick(
                 "Select some copyable text first, then press the hotkey.",
                 "请先在当前应用里选中一段可复制的文本，再按快捷键。"
-            )
-        case .hotKeyRegistrationFailed:
-            return L.pick(
-                "The hotkey may be used by another app. Quit the other app or change the hotkey in Settings.",
-                "快捷键可能被其他应用占用。请退出占用应用，或在设置里改用其它快捷键。"
             )
         case .invalidAIBaseURL:
             return L.pick(

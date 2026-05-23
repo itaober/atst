@@ -14,17 +14,12 @@ final class SettingsStore: ObservableObject {
     }
 
     func save(_ configuration: AppConfiguration) throws {
-        let data = try JSONEncoder().encode(configuration.persistedCopy())
+        let data = try JSONEncoder().encode(configuration)
         UserDefaults.standard.set(data, forKey: AppConfiguration.storageKey)
         self.configuration = configuration
         let now = Date()
         UserDefaults.standard.set(now, forKey: Self.lastSavedAtKey)
         lastSavedAt = now
-    }
-
-    func reload() {
-        configuration = .load()
-        lastSavedAt = Self.loadLastSavedAt()
     }
 
     private static func loadLastSavedAt() -> Date? {

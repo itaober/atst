@@ -6,8 +6,6 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let settingsStore: SettingsStore
     private let updateChecker: UpdateChecker
-    private let onTranslateSelection: () -> Void
-    private let onTranslateScreenshot: () -> Void
     private let onQuit: () -> Void
 
     private var panel: NSPanel?
@@ -17,14 +15,10 @@ final class StatusBarController: NSObject {
     init(
         settingsStore: SettingsStore,
         updateChecker: UpdateChecker,
-        onTranslateSelection: @escaping () -> Void,
-        onTranslateScreenshot: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         self.updateChecker = updateChecker
-        self.onTranslateSelection = onTranslateSelection
-        self.onTranslateScreenshot = onTranslateScreenshot
         self.onQuit = onQuit
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
@@ -120,14 +114,6 @@ final class StatusBarController: NSObject {
         let content = MenuBarSettingsView(
             settingsStore: settingsStore,
             updateChecker: updateChecker,
-            onTranslateSelection: { [weak self] in
-                self?.close()
-                self?.onTranslateSelection()
-            },
-            onTranslateScreenshot: { [weak self] in
-                self?.close()
-                self?.onTranslateScreenshot()
-            },
             onQuit: onQuit
         )
         let host = NSHostingController(rootView: content)

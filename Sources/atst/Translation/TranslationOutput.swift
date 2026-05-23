@@ -19,7 +19,6 @@ struct TranslationOutput: Equatable, Codable {
 
     var hasPhonetic: Bool { !(phonetic ?? "").isEmpty }
     var hasDescription: Bool { !(description ?? "").isEmpty }
-    var isMultiMeaning: Bool { items.count > 1 }
 }
 
 enum TranslationOutputParser {

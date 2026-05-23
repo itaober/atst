@@ -183,17 +183,6 @@ final class TranslatorViewModel: ObservableObject {
         state = .failure(DisplayError(error))
     }
 
-    func setTargetLanguage(_ language: String) {
-        var next = configuration
-        next.targetLanguage = language
-        try? settingsStore.save(next)
-    }
-
-    func reloadConfiguration() {
-        settingsStore.reload()
-        state = .idle
-    }
-
     // MARK: - Provider plumbing
 
     /// Build the list of providers we should fan out to, honoring the AI/API
@@ -530,30 +519,6 @@ enum SegmentState: Equatable {
 }
 
 extension TranslationState {
-    /// Convenience: which segment currently makes the most sense to copy
-    /// when the user uses a global "copy" shortcut. Returns the AI result
-    /// when available, otherwise the first successful API segment.
-    var copyableText: String? {
-        switch self {
-        case .text(let segments):
-            if let ai = segments.ai, case .success(let output, _, _, _) = ai.state {
-                return output.result.isEmpty ? nil : output.result
-            }
-            for segment in segments.api {
-                if case .success(let output, _, _, _) = segment.state, !output.result.isEmpty {
-                    return output.result
-                }
-            }
-            return nil
-        case .screenshotStreaming(_, let output, _, _):
-            return output.result.isEmpty ? nil : output.result
-        case .screenshotSuccess(let output, _, _):
-            return output.result
-        case .idle, .screenshotLoading, .failure:
-            return nil
-        }
-    }
-
     var sourceText: String {
         switch self {
         case .text(let segments): return segments.source

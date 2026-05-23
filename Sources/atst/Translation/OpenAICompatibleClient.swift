@@ -23,35 +23,6 @@ struct OpenAICompatibleClient {
         }.resume()
     }
 
-    func complete(model: String, messages: [ChatMessage]) async throws -> String {
-        let request = try makeRequest(model: model, messages: messages, stream: false)
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw AppError.aiRequestFailed("AI 服务返回了无法识别的响应。")
-            }
-
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                let detail = decodeErrorMessage(from: data) ?? "HTTP \(httpResponse.statusCode)"
-                throw AppError.aiRequestFailed(detail)
-            }
-
-            let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
-            let result = decoded.choices.first?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !result.isEmpty else {
-                throw AppError.emptyTranslation
-            }
-            return result
-        } catch let error as AppError {
-            throw error
-        } catch let error as URLError {
-            throw AppError.aiUnavailable(error.localizedDescription)
-        } catch {
-            throw AppError.aiRequestFailed(error.localizedDescription)
-        }
-    }
-
     func stream(
         model: String,
         messages: [ChatMessage],
@@ -245,18 +216,6 @@ private struct ChatCompletionRequest: Encodable {
     var messages: [ChatMessage]
     var temperature: Double
     var stream: Bool
-}
-
-private struct ChatCompletionResponse: Decodable {
-    var choices: [ChatChoice]
-}
-
-private struct ChatChoice: Decodable {
-    var message: ChatResponseMessage
-}
-
-private struct ChatResponseMessage: Decodable {
-    var content: String
 }
 
 private struct ChatCompletionStreamChunk: Decodable {

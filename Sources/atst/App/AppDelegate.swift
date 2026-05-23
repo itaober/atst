@@ -19,12 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var statusBarController = StatusBarController(
         settingsStore: settingsStore,
         updateChecker: updateChecker,
-        onTranslateSelection: { [weak self] in
-            self?.translateSelection()
-        },
-        onTranslateScreenshot: { [weak self] in
-            self?.translateScreenshot()
-        },
         onQuit: {
             NSApp.terminate(nil)
         }
@@ -45,8 +39,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMainMenu()
         _ = statusBarController
         configureHotKeys(settingsStore.configuration)
-        ensureHotKeyMonitorRunning(prompt: true)
+        // Don't prompt for Accessibility at launch — the perm rows in the
+        // settings panel are the canonical surface for grant/manage, and
+        // unsolicited startup dialogs are noisy. We just try to bring up
+        // the tap; if it fails, log and let the user discover the
+        // missing perm via settings.
+        ensureHotKeyMonitorRunning()
         startAccessibilityWatch()
+        AppLogger.log("permissions snapshot ax=\(PermissionChecker.isAccessibilityTrusted) screen=\(PermissionChecker.isScreenRecordingTrusted)")
         prewarmAllProviders(settingsStore.configuration)
         startPrewarmTimer()
         applyCacheSettings(settingsStore.configuration)
@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] configuration in
                 L.override = configuration.uiLanguage
                 self?.configureHotKeys(configuration)
-                self?.ensureHotKeyMonitorRunning(prompt: false)
+                self?.ensureHotKeyMonitorRunning()
                 self?.applyAppearance(configuration.appearanceMode)
                 self?.applyCacheSettings(configuration)
                 self?.prewarmAllProviders(configuration)
@@ -139,10 +139,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyMonitor.stop()
     }
 
-    @objc private func translateSelection() {
+    private func translateSelection() {
         AppLogger.log("translateSelection invoked")
         currentTranslationTask?.cancel()
         currentScreenshotTask?.cancel()
+        // Lazy permission check: the user just expressed intent to use a
+        // feature, this is the right moment to ensure its prerequisites.
+        // Accessibility is needed because SelectedTextProvider's pasteboard
+        // fallback simulates ⌘C. (Input Monitoring isn't checked here —
+        // if this code is running via the hotkey, IM must already be
+        // granted, otherwise the keyDown wouldn't have reached us.)
+        guard PermissionChecker.isAccessibilityTrusted else {
+            AppLogger.log("translateSelection: accessibility not granted, surfacing error")
+            viewModel.showError(AppError.accessibilityPermissionRequired)
+            panelController.show(anchor: .mouse)
+            return
+        }
         let task = Task { [weak self] in
             guard let self else { return }
             do {
@@ -180,11 +192,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// When AI is disabled and OCR can't help, we surface a clear error
     /// instead of letting the underlying request fail with a generic
     /// "model not configured" message.
-    @objc private func translateScreenshot() {
+    private func translateScreenshot() {
         AppLogger.log("translateScreenshot invoked")
         currentTranslationTask?.cancel()
         currentScreenshotTask?.cancel()
         panelController.close()
+        // Lazy permission check: screencapture -i requires Screen Recording
+        // on macOS 10.15+. Without it the subprocess silently produces an
+        // empty file. Catch ahead of time and surface a clean prompt.
+        guard PermissionChecker.isScreenRecordingTrusted else {
+            AppLogger.log("translateScreenshot: screen recording not granted, surfacing error")
+            viewModel.showError(AppError.screenRecordingPermissionRequired)
+            panelController.show(anchor: .mouse)
+            return
+        }
         let task = Task { [weak self] in
             guard let self else { return }
             do {
@@ -309,10 +330,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return !model.isEmpty
     }
 
-    @objc private func closePanel() {
-        panelController.close()
-    }
-
     /// Triggered when the user clicks the "cached — refresh" affordance in
     /// the tooltip header. Skips pasteboard capture (we already have the
     /// source text) and forces fresh provider calls by bypassing the cache.
@@ -350,7 +367,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
     }
 
-    private func ensureHotKeyMonitorRunning(prompt: Bool) {
+    /// Attempt to bring up the global hotkey tap. Silent — if it fails
+    /// (most commonly because Accessibility is not granted), we log once
+    /// and return. The user discovers the issue through the permissions
+    /// section of the settings panel, which is the canonical place to
+    /// manage grants.
+    private func ensureHotKeyMonitorRunning() {
         if hotKeyMonitor.start() {
             didLogMissingPermission = false
             return
@@ -360,15 +382,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLogger.log("hotkey monitor unavailable; accessibility permission required")
             didLogMissingPermission = true
         }
-
-        if prompt {
-            promptForAccessibility()
-        }
-    }
-
-    private func promptForAccessibility() {
-        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true]
-        _ = AXIsProcessTrustedWithOptions(options)
     }
 
     private func startAccessibilityWatch() {
@@ -378,7 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.hotKeyMonitor.reenableIfNeeded()
                 if self.hotKeyMonitor.eventTap == nil {
-                    self.ensureHotKeyMonitorRunning(prompt: false)
+                    self.ensureHotKeyMonitorRunning()
                 }
             }
         }

@@ -56,7 +56,16 @@ final class GlobalHotKeyMonitor {
         self.eventTap = tap
         self.runLoopSource = source
         self.isStarted = true
-        AppLogger.log("CGEventTap started")
+        let enabled = CGEvent.tapIsEnabled(tap: tap)
+        // SecureEventInput captures the whole system's keyboard at a layer
+        // below CGEventTap: when ANY app turns it on (Terminal "Secure
+        // Keyboard Entry", iTerm2, 1Password autofill, password fields…)
+        // every session-level event tap stops receiving keyDown events
+        // globally, while flagsChanged still come through. This is the
+        // single most common cause of "atst hotkey silently broken" on
+        // a machine where Accessibility is granted and the tap is up.
+        let secure = IsSecureEventInputEnabled()
+        AppLogger.log("CGEventTap started enabled=\(enabled) ax=\(PermissionChecker.isAccessibilityTrusted) secureInput=\(secure)")
         return true
     }
 
