@@ -8,6 +8,12 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 (no changes yet)
 
+## v0.2.2
+
+- New "Notes on all desktops" toggle in General settings — when on, pinned notes follow you across Spaces / desktop switches instead of staying on the desktop they were pinned on. Default off; flipping it updates already-pinned notes live without needing to re-pin
+- Settings copy polished throughout — tightened bilingual subtitles, dropped mixed-language phrases, renamed "TTL (days)" to "Days to keep" for clarity, fixed the Chinese "Reset" button label
+- Fixed vertical alignment of items in the OCR recognition-language chip row — the "+ Add" pill and language chips are now centered on the same baseline rather than top-aligned
+
 ## v0.2.1
 
 - Settings panel adopts Liquid Glass on macOS 26+ (Swift 6.2+ builds), matching the tooltip / pinned-note treatment from v0.2.0; older systems fall back to the existing menu material automatically
