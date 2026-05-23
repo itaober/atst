@@ -8,6 +8,17 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 (no changes yet)
 
+## v0.2.1
+
+- Settings panel adopts Liquid Glass on macOS 26+ (Swift 6.2+ builds), matching the tooltip / pinned-note treatment from v0.2.0; older systems fall back to the existing menu material automatically
+- All four right-side controls in the General page (target language, timeout, interface language, appearance) now align to a single right edge — segmented pickers no longer drift based on label width
+- Settings header gains a version label (`atst v0.2.1`) that links to the matching release page, plus an auto-update pill that surfaces when a newer GitHub release is available
+- Google translation now preserves newlines and blank lines in multi-line selections, keeping list / paragraph structure intact
+- API providers can be reordered with ▲/▼ buttons in the API subpage; the tooltip and result panel honour the new order
+- "翻译方式" section in General now lists API Translation above AI Translation, matching the tooltip layout
+- Diagnostic for the macOS Secure Keyboard Entry trap: if another app (e.g. 1Password) is holding secure input, an orange warning now surfaces in Settings so the hotkey-not-working case is identifiable in seconds rather than mistaken for a permission bug
+- Comprehensive internal cleanup pass — removed dead code, unused fields / parameters, vestigial methods, and orphaned UI files; no behaviour change
+
 ## v0.2.0
 
 - Translation tooltips and pinned notes now use native Liquid Glass on macOS 26+ when built with Swift 6.2+, while older systems automatically keep the existing AppKit tooltip material fallback
