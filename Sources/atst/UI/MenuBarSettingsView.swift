@@ -251,7 +251,7 @@ struct MenuBarSettingsView: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer()
-            Button(L.pick("Reset", "默认")) {
+            Button(L.pick("Reset", "恢复默认")) {
                 resetToDefaults()
             }
             .controlSize(.small)
@@ -296,8 +296,8 @@ struct MenuBarSettingsView: View {
             SettingsToggleRow(
                 title: L.pick("Use Vision OCR", "使用 Vision OCR"),
                 subtitle: L.pick(
-                    "Recognise text on-device, then translate via the same providers. Falls back to AI vision when no text is found.",
-                    "本地识别文字，再走多 provider 翻译；未识别到文字时自动 fallback 到 AI 视觉。"
+                    "Recognise text locally, then translate. Falls back to AI vision when no text is found.",
+                    "先在本地识别文字，再进行翻译。识别不到文字时使用 AI 视觉。"
                 ),
                 isOn: $draft.screenshotUseVisionOCR,
                 onChange: save
@@ -321,8 +321,8 @@ struct MenuBarSettingsView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.primary)
                     Text(L.pick(
-                        "Vision tries these in order. Add the languages you usually capture.",
-                        "Vision 按顺序尝试。把常截到的语言加进来即可。"
+                        "Tried in order. Add the languages you often capture.",
+                        "按顺序识别。添加你常截到的语言。"
                     ))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -443,7 +443,7 @@ struct MenuBarSettingsView: View {
             }
         }
         if enabled.isEmpty {
-            return L.pick("No providers enabled", "未启用任何 provider")
+            return L.pick("No translators enabled", "未启用任何翻译源")
         }
         return enabled.joined(separator: " · ")
     }
@@ -493,18 +493,18 @@ struct MenuBarSettingsView: View {
             SettingsToggleRow(
                 title: L.pick("Enable cache", "开启缓存"),
                 subtitle: L.pick(
-                    "Save successful translations locally; identical lookups skip the network call.",
-                    "本地保存翻译结果；下次相同查询不再请求接口。"
+                    "Save translations locally. Repeat lookups skip the network.",
+                    "本地保存翻译结果，相同查询直接复用。"
                 ),
                 isOn: $draft.cacheEnabled,
                 onChange: save
             )
             Divider().padding(.horizontal, 10)
             cacheNumberRow(
-                title: L.pick("TTL (days)", "缓存天数"),
+                title: L.pick("Days to keep", "保留天数"),
                 subtitle: L.pick(
-                    "Entries older than this are treated as misses and pruned.",
-                    "超过这个天数的条目当作未命中并自动删除。"
+                    "Older entries are discarded automatically.",
+                    "超过天数的条目会自动清除。"
                 ),
                 value: $draft.cacheTTLDays,
                 range: 1...365
@@ -515,8 +515,8 @@ struct MenuBarSettingsView: View {
             cacheNumberRow(
                 title: L.pick("Max entries", "缓存上限"),
                 subtitle: L.pick(
-                    "Hard cap; least-recently-used entries evict when exceeded.",
-                    "硬性上限；超过时按最久未用淘汰。"
+                    "Once reached, the least recently used entries are removed.",
+                    "达到上限后，按最久未用清除。"
                 ),
                 value: $draft.cacheMaxEntries,
                 range: 100...50000
@@ -624,13 +624,13 @@ struct MenuBarSettingsView: View {
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(L.pick(
-                    "Hotkeys disabled by another app",
-                    "快捷键被其他 app 拦截了"
+                    "Hotkeys blocked by another app",
+                    "快捷键被其他 App 拦截"
                 ))
                 .font(.system(size: 12, weight: .semibold))
                 Text(L.pick(
-                    "macOS Secure Keyboard Entry is active (commonly 1Password autofill, Terminal's \"Secure Keyboard Entry\", or a focused password field). Quit / disable in that app to restore atst's hotkeys.",
-                    "macOS 的安全键盘输入正被其他 app 占用（常见：1Password 自动填充、勾选了\"安全键盘输入\"的 Terminal、或当前的密码框）。关闭或退出该 app 即可恢复。"
+                    "macOS Secure Keyboard Entry is active. Common sources: 1Password autofill, Terminal with Secure Keyboard Entry on, or a focused password field. Disable it to restore atst's hotkeys.",
+                    "macOS 安全键盘输入被占用。常见来源：1Password 自动填充、Terminal 启用了\"安全键盘输入\"、或当前停留在密码输入框。关闭来源后即可恢复。"
                 ))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -670,7 +670,7 @@ struct MenuBarSettingsView: View {
 
     private var generalSection: some View {
         SettingsSection(title: L.pick("General", "通用")) {
-            // All four rows share the same horizontal layout — label (+
+            // Every row shares the same horizontal layout — label (+
             // optional subtitle) on the left, control pinned to the right
             // edge — so the section has a consistent visual rhythm rather
             // than mixing "label above" and "label beside" patterns.
@@ -681,6 +681,8 @@ struct MenuBarSettingsView: View {
             uiLanguageRow
             Divider().padding(.horizontal, 10)
             appearanceRow
+            Divider().padding(.horizontal, 10)
+            pinnedNoteFollowsRow
         }
     }
 
@@ -774,7 +776,7 @@ struct MenuBarSettingsView: View {
                 Text(L.pick("Interface Language", "界面语言"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
-                Text(L.pick("Auto follows your macOS language", "自动会跟随系统语言"))
+                Text(L.pick("Auto follows the system", "自动跟随系统"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -821,7 +823,7 @@ struct MenuBarSettingsView: View {
                 Text(L.pick("Appearance", "外观"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
-                Text(L.pick("Follows the system unless overridden", "默认跟随系统外观"))
+                Text(L.pick("Auto follows the system", "自动跟随系统"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -844,6 +846,37 @@ struct MenuBarSettingsView: View {
                 .onChange(of: draft.appearanceMode) { _ in
                     save()
                 }
+            }
+            .frame(width: generalControlWidth, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+    }
+
+    private var pinnedNoteFollowsRow: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(L.pick("Notes on all desktops", "便签跨桌面显示"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Text(L.pick(
+                    "Keep pinned notes visible after switching Space",
+                    "切换桌面后便签依然可见"
+                ))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Toggle("", isOn: $draft.pinnedNoteFollowsAcrossSpaces)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: draft.pinnedNoteFollowsAcrossSpaces) { _ in
+                        save()
+                    }
             }
             .frame(width: generalControlWidth, alignment: .trailing)
         }
@@ -1076,20 +1109,39 @@ private struct FlowLayoutWrapping: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x: CGFloat = bounds.minX
-        var y: CGFloat = bounds.minY
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
+        // Two passes: row-break the children first so we know each row's
+        // max height, then place each child vertically centered within
+        // its row. Single-pass placement (place top-aligned as we go)
+        // was visibly wrong for heterogeneous rows — the OCR chip with
+        // an embedded × hit-target sits 2pt taller than the "+ 添加"
+        // menu pill, so they ended up top-aligned but center-misaligned.
+        var rows: [[Int]] = [[]]
+        var rowHeights: [CGFloat] = [0]
+        var x: CGFloat = 0
+        for (idx, subview) in subviews.enumerated() {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                y += rowHeight + runSpacing
-                x = bounds.minX
-                rowHeight = 0
+            if x + size.width > bounds.width, x > 0 {
+                rows.append([])
+                rowHeights.append(0)
+                x = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            rows[rows.count - 1].append(idx)
+            rowHeights[rowHeights.count - 1] = max(rowHeights[rowHeights.count - 1], size.height)
             x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+        }
+
+        var y: CGFloat = bounds.minY
+        for (rowIdx, row) in rows.enumerated() {
+            let rowHeight = rowHeights[rowIdx]
+            var rowX: CGFloat = bounds.minX
+            for idx in row {
+                let subview = subviews[idx]
+                let size = subview.sizeThatFits(.unspecified)
+                let dy = (rowHeight - size.height) / 2
+                subview.place(at: CGPoint(x: rowX, y: y + dy), proposal: ProposedViewSize(size))
+                rowX += size.width + spacing
+            }
+            y += rowHeight + runSpacing
         }
     }
 }

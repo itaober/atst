@@ -74,6 +74,11 @@ struct AppConfiguration: Codable, Equatable {
     var cacheMaxEntries: Int
     var textHotKey: KeyboardShortcutConfig
     var screenshotHotKey: KeyboardShortcutConfig
+    /// When on, pinned notes survive Spaces / desktop switches by joining
+    /// every Space (`.canJoinAllSpaces`). Default off because most users
+    /// pin a note in the context of one desktop and expect it to stay
+    /// there. Opt-in for the "follow me everywhere" workflow.
+    var pinnedNoteFollowsAcrossSpaces: Bool
 
     static let defaultAPIProviders: [APIProviderEntry] = [
         .init(kind: .google, enabled: true),
@@ -114,7 +119,8 @@ struct AppConfiguration: Codable, Equatable {
         textHotKey: .defaultText,
         screenshotHotKey: .defaultScreenshot,
         screenshotUseVisionOCR: true,
-        ocrLanguages: defaultOCRLanguages
+        ocrLanguages: defaultOCRLanguages,
+        pinnedNoteFollowsAcrossSpaces: false
     )
 
     static let storageKey = "atst.configuration.v1"
@@ -142,7 +148,8 @@ struct AppConfiguration: Codable, Equatable {
         textHotKey: KeyboardShortcutConfig = .defaultText,
         screenshotHotKey: KeyboardShortcutConfig = .defaultScreenshot,
         screenshotUseVisionOCR: Bool = true,
-        ocrLanguages: [String] = AppConfiguration.defaultOCRLanguages
+        ocrLanguages: [String] = AppConfiguration.defaultOCRLanguages,
+        pinnedNoteFollowsAcrossSpaces: Bool = false
     ) {
         self.aiEnabled = aiEnabled
         self.apiEnabled = apiEnabled
@@ -167,6 +174,7 @@ struct AppConfiguration: Codable, Equatable {
         self.screenshotHotKey = screenshotHotKey
         self.screenshotUseVisionOCR = screenshotUseVisionOCR
         self.ocrLanguages = ocrLanguages
+        self.pinnedNoteFollowsAcrossSpaces = pinnedNoteFollowsAcrossSpaces
     }
 
     init(from decoder: Decoder) throws {
@@ -211,6 +219,7 @@ struct AppConfiguration: Codable, Equatable {
             // default so OCR still works without manual intervention.
             ocrLanguages = defaults.ocrLanguages
         }
+        pinnedNoteFollowsAcrossSpaces = try container.decodeIfPresent(Bool.self, forKey: .pinnedNoteFollowsAcrossSpaces) ?? defaults.pinnedNoteFollowsAcrossSpaces
     }
 
     var chatCompletionsURL: URL? {

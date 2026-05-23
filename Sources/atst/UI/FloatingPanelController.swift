@@ -17,6 +17,7 @@ final class FloatingPanelController {
     private lazy var hostingController: NSHostingController<TranslationResultView> = makeHostingController()
     private lazy var panel: NSPanel = makePanel()
     private var pinObserver: AnyCancellable?
+    private var configObserver: AnyCancellable?
     private var spaceChangeObserver: NSObjectProtocol?
     private var outsideClickGlobalMonitor: Any?
     private var outsideClickLocalMonitor: Any?
@@ -45,6 +46,19 @@ final class FloatingPanelController {
                 self?.close()
             }
         }
+        // Push the "follow across desktops" flag into every live pinned
+        // note whenever the user flips it in settings. `removeDuplicates`
+        // keeps us from re-applying on every unrelated config save (cache
+        // toggle, target language, etc.).
+        configObserver = viewModel.$configuration
+            .map(\.pinnedNoteFollowsAcrossSpaces)
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                for note in self.noteControllers {
+                    note.setFollowsAcrossSpaces(enabled)
+                }
+            }
     }
 
     deinit {
@@ -124,7 +138,10 @@ final class FloatingPanelController {
         }
 
         let originTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
-        let note = PinnedNoteController(snapshot: snapshot)
+        let note = PinnedNoteController(
+            snapshot: snapshot,
+            followsAcrossSpaces: viewModel.configuration.pinnedNoteFollowsAcrossSpaces
+        )
         note.onUserClose = { [weak self, weak note] in
             guard let self, let note else { return }
             self.noteControllers.removeAll { $0 === note }
@@ -458,7 +475,7 @@ private final class PinnedNoteController {
 
     var onUserClose: (() -> Void)?
 
-    init(snapshot: PinnedNoteSnapshot) {
+    init(snapshot: PinnedNoteSnapshot, followsAcrossSpaces: Bool) {
         var dismissAction: () -> Void = {}
         let view = PinnedNoteView(snapshot: snapshot) {
             dismissAction()
@@ -482,7 +499,7 @@ private final class PinnedNoteController {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.level = .floating
-        panel.collectionBehavior = [.fullScreenAuxiliary]
+        panel.collectionBehavior = Self.collectionBehavior(followsAcrossSpaces: followsAcrossSpaces)
         panel.contentViewController = host
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
@@ -513,5 +530,23 @@ private final class PinnedNoteController {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
         }
+    }
+
+    /// Re-applies the Spaces-following collection behavior. Called when
+    /// the user flips the toggle in settings so live notes update without
+    /// needing to be re-pinned.
+    func setFollowsAcrossSpaces(_ enabled: Bool) {
+        panel.collectionBehavior = Self.collectionBehavior(followsAcrossSpaces: enabled)
+    }
+
+    /// `.fullScreenAuxiliary` keeps the note visible when another app is
+    /// in fullscreen. `.canJoinAllSpaces` (only when the user opts in)
+    /// makes it follow across desktops / Spaces; `.stationary` pairs with
+    /// it to skip the parallax slide during Mission Control transitions.
+    private static func collectionBehavior(followsAcrossSpaces: Bool) -> NSWindow.CollectionBehavior {
+        if followsAcrossSpaces {
+            return [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        }
+        return [.fullScreenAuxiliary]
     }
 }
