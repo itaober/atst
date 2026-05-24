@@ -38,19 +38,13 @@
 ## 截图
 
 <details>
-<summary>翻译浮窗 · 词典模式 · 设置页</summary>
+<summary>点击展开</summary>
 
 <br />
 
-**翻译浮窗** — Google、Microsoft 和你配置的 AI 模型并排显示
-
 ![翻译浮窗](docs/screenshots/tooltip-1.png)
 
-**词典模式** — 多义词、IPA 音标和简短解释
-
-![词典模式](docs/screenshots/tooltip-2.png)
-
-**设置页** — macOS 26+ 上启用 Liquid Glass
+![翻译浮窗](docs/screenshots/tooltip-2.png)
 
 ![设置页](docs/screenshots/settings.png)
 

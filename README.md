@@ -38,21 +38,15 @@ Hit a hotkey, get a translation. Works **out of the box** with built-in Google +
 ## Screenshots
 
 <details>
-<summary>Translation tooltip · Dictionary mode · Settings panel</summary>
+<summary>Click to expand</summary>
 
 <br />
 
-**Translation tooltip** — Google, Microsoft and your AI model side-by-side
+![Tooltip](docs/screenshots/tooltip-1.png)
 
-![Translation tooltip](docs/screenshots/tooltip-1.png)
+![Tooltip](docs/screenshots/tooltip-2.png)
 
-**Dictionary mode** — multi-meaning entries with IPA and a short explanation
-
-![Dictionary mode](docs/screenshots/tooltip-2.png)
-
-**Settings panel** — adopts Liquid Glass on macOS 26+
-
-![Settings panel](docs/screenshots/settings.png)
+![Settings](docs/screenshots/settings.png)
 
 </details>
 
