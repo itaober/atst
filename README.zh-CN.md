@@ -6,7 +6,7 @@
 
 **a(i)-text-select-translate** — macOS 菜单栏轻量翻译工具
 
-`a`（AI）· `t`（text）· `s`（select）· `t`（translate）
+`a`(i) · `t`ext · `s`elect · `t`ranslate
 
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)](#要求)
 [![Version](https://img.shields.io/badge/version-v0.2.2-blue)](https://github.com/itaober/atst/releases/latest)
