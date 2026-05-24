@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Resources/AppIcon.iconset/icon_128x128.png" alt="atst" width="128" height="128" />
+<img src="Resources/AppIconSource.png" alt="atst" width="128" height="128" />
 
 # atst
 
@@ -9,7 +9,7 @@
 `a` (AI) · `t` (text) · `s` (select) · `t` (translate)
 
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)](#requirements)
-[![Latest release](https://img.shields.io/github/v/release/itaober/atst?label=version&color=blue)](https://github.com/itaober/atst/releases/latest)
+[![Version](https://img.shields.io/badge/version-v0.2.2-blue)](https://github.com/itaober/atst/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-orange)](./LICENSE)
 
 Hit a hotkey, get a translation. Works **out of the box** with built-in Google + Microsoft adapters, and unlocks AI-grade dictionary / explanation when you bring your own model.

@@ -97,6 +97,21 @@ fi
 DMG_SHA="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
 echo "→ DMG SHA-256: $DMG_SHA"
 
+# Bump the static version badge in both READMEs. The badge URL pattern is
+# `version-vX.Y.Z-blue`; we substitute whatever vN.N.N is currently there
+# with the new version. Skip the commit if neither file actually changed
+# (e.g. someone already bumped them by hand).
+echo "→ Syncing README version badges to $VERSION"
+BUMP_SED="s|version-v[0-9]\\+\\.[0-9]\\+\\.[0-9]\\+-blue|version-${VERSION}-blue|g"
+sed -i '' "$BUMP_SED" README.md README.zh-CN.md
+if [[ -n "$(git status --porcelain README.md README.zh-CN.md)" ]]; then
+  git add README.md README.zh-CN.md
+  git commit -m "chore: bump README version badge to $VERSION"
+  git push origin main
+else
+  echo "  (READMEs already at $VERSION, nothing to commit)"
+fi
+
 echo "→ Creating git tag $VERSION"
 git tag -a "$VERSION" -m "$VERSION"
 git push origin "$VERSION"
