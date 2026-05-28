@@ -8,6 +8,14 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 (no changes yet)
 
+## v0.3.0
+
+- **Translation activity sparkline** — stats section gains a 14-day mini chart showing daily translation volume. Solid line counts every translation (cache hits included); dashed line counts only fresh translations (cache misses). Hover any day for a popover with that day's exact numbers
+- **Minimum macOS version raised to 14 (Sonoma)** — unlocks the native `chartXSelection` API for the sparkline's mouse-following tooltip. macOS 13 (Ventura) is no longer supported
+- DMG size reduced ~60% (from ~5.3 MB to ~2.0 MB) thanks to pngquant-compressed app icon during build. Visually identical at icon render sizes
+- Fixed pasteboard restoration when selection translation is re-triggered mid-capture — your original clipboard contents are no longer lost on rapid-fire ⌥D presses
+- Trimmed the "Hotkeys blocked by another app" warning to one sentence (was a full paragraph)
+
 ## v0.2.2
 
 - New "Notes on all desktops" toggle in General settings — when on, pinned notes follow you across Spaces / desktop switches instead of staying on the desktop they were pinned on. Default off; flipping it updates already-pinned notes live without needing to re-pin
