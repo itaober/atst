@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Charts
 import SwiftUI
 
 private enum SettingsRoute: Hashable {
@@ -22,6 +23,7 @@ struct MenuBarSettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var cache: TranslationCache = .shared
+    @ObservedObject var stats: TranslationStats = .shared
     var onQuit: () -> Void
 
     @State private var draft: AppConfiguration
@@ -38,6 +40,9 @@ struct MenuBarSettingsView: View {
     @State private var permissionPollTask: Task<Void, Never>?
     @State private var saveDebounceTask: Task<Void, Never>?
     @State private var routeStack: [SettingsRoute] = []
+    /// Bound to whichever day in the sparkline the cursor is over via
+    /// `chartXSelection`. nil = no hover, hides the inline annotation.
+    @State private var sparklineSelectedDate: Date?
 
     private let panelWidth: CGFloat = 360
 
@@ -565,17 +570,135 @@ struct MenuBarSettingsView: View {
                 statBlock(label: L.pick("API", "API"), value: "\(cache.apiCount)")
                 Divider().frame(height: 28)
                 statBlock(label: L.pick("Cache", "缓存"), value: Self.byteFormatter.string(fromByteCount: Int64(cache.totalBytes)))
-                Spacer()
+                Spacer(minLength: 6)
+                statsSparkline
+                Spacer(minLength: 6)
                 Button(L.pick("Clear", "清空")) {
                     cache.clear()
+                    stats.clear()
                 }
                 .controlSize(.small)
+                .fixedSize()
                 .disabled(cache.aiCount == 0 && cache.apiCount == 0)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
     }
+
+    /// 14-day sparkline with two stacked series:
+    ///   - Total: every user-triggered translation (incl. cache hits)
+    ///   - New:   only cache misses (fresh provider calls)
+    ///
+    /// Uses macOS 14's `chartXSelection` for native hover that tracks
+    /// the cursor x-position. The selected day's annotation (date +
+    /// both counts) is anchored to a `RuleMark` so the tooltip arrow
+    /// follows the mouse. Hidden axes since at 70pt wide the visual is
+    /// a glance-able shape, not a precise reading.
+    private var statsSparkline: some View {
+        // Touch revision so this view re-evaluates whenever stats change.
+        _ = stats.revision
+        let series = stats.dailyCounts(days: 14)
+        let maxValue = max(1, series.map(\.total).max() ?? 1)
+        let selectedEntry = sparklineSelectedDate.flatMap { date in
+            series.min(by: {
+                abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date))
+            })
+        }
+
+        return Chart {
+            ForEach(series, id: \.date) { day in
+                LineMark(
+                    x: .value("Day", day.date),
+                    y: .value("Count", day.total),
+                    series: .value("Kind", "total")
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Color.accentColor)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            }
+            ForEach(series, id: \.date) { day in
+                LineMark(
+                    x: .value("Day", day.date),
+                    y: .value("Count", day.new),
+                    series: .value("Kind", "new")
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(Color.orange)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, dash: [2, 2]))
+            }
+            if let entry = selectedEntry {
+                RuleMark(x: .value("Selected", entry.date))
+                    .foregroundStyle(Color.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(
+                        position: .top,
+                        alignment: .center,
+                        spacing: 4,
+                        overflowResolution: .init(x: .disabled, y: .disabled)
+                    ) {
+                        sparklineHoverContent(for: entry)
+                            .padding(10)
+                            .padding(.bottom, 5) // room for the downward arrow tip
+                            .background(.regularMaterial, in: PopoverCardShape())
+                            .overlay(
+                                PopoverCardShape()
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                            )
+                            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+                    }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: 0...maxValue)
+        .chartXSelection(value: $sparklineSelectedDate)
+        .frame(width: 70, height: 22)
+    }
+
+    private func sparklineHoverContent(for entry: TranslationStats.DailyEntry) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(Self.hoverDateFormatter.string(from: entry.date))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                hoverStat(
+                    color: .accentColor,
+                    label: L.pick("Total", "总次数"),
+                    value: entry.total
+                )
+                Divider().frame(height: 32)
+                hoverStat(
+                    color: .orange,
+                    label: L.pick("New", "新词"),
+                    value: entry.new
+                )
+            }
+        }
+    }
+
+    private func hoverStat(color: Color, label: String, value: Int) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(value)")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                Text(label)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private static let hoverDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: L.isChinese ? "zh_CN" : "en_US")
+        f.dateFormat = L.isChinese ? "M月d日 EEEE" : "MMM d, EEEE"
+        return f
+    }()
 
     private func statBlock(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -629,8 +752,8 @@ struct MenuBarSettingsView: View {
                 ))
                 .font(.system(size: 12, weight: .semibold))
                 Text(L.pick(
-                    "macOS Secure Keyboard Entry is active. Common sources: 1Password autofill, Terminal with Secure Keyboard Entry on, or a focused password field. Disable it to restore atst's hotkeys.",
-                    "macOS 安全键盘输入被占用。常见来源：1Password 自动填充、Terminal 启用了\"安全键盘输入\"、或当前停留在密码输入框。关闭来源后即可恢复。"
+                    "macOS Secure Keyboard Entry is active. Common culprits: 1Password autofill, Terminal, or a focused password field.",
+                    "macOS 安全键盘输入被占用。常见来源：1Password 自动填充、Terminal、密码输入框。"
                 ))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -1044,6 +1167,34 @@ enum TargetLanguagePreset {
 /// chip / tag — recognisable from countless modern settings UIs. The ×
 /// button only renders when `onRemove` is set, so callers can disable
 /// removal (e.g. for the last remaining language to keep OCR functional).
+/// Popover-styled card with a downward-pointing arrow at the bottom-
+/// center. Used as the background for the sparkline's hover annotation
+/// so the tooltip visually resembles a native popover (material
+/// background + arrow indicator + drop shadow) while staying inside
+/// SwiftUI Charts' annotation system — meaning it follows the cursor
+/// natively via `chartXSelection`.
+private struct PopoverCardShape: Shape {
+    var cornerRadius: CGFloat = 8
+    var arrowWidth: CGFloat = 10
+    var arrowHeight: CGFloat = 5
+
+    func path(in rect: CGRect) -> Path {
+        let bodyHeight = rect.height - arrowHeight
+        let bodyRect = CGRect(x: 0, y: 0, width: rect.width, height: bodyHeight)
+
+        var path = Path(roundedRect: bodyRect, cornerRadius: cornerRadius)
+
+        // Append the downward arrow at the bottom-center.
+        let centerX = rect.midX
+        path.move(to: CGPoint(x: centerX - arrowWidth / 2, y: bodyHeight))
+        path.addLine(to: CGPoint(x: centerX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: centerX + arrowWidth / 2, y: bodyHeight))
+        path.closeSubpath()
+
+        return path
+    }
+}
+
 private struct LanguageChip: View {
     let name: String
     let onRemove: (() -> Void)?
@@ -1080,9 +1231,8 @@ private struct LanguageChip: View {
 }
 
 /// Lightweight flow layout (wrap-to-next-line) used by the OCR language
-/// chips row. Reaches for SwiftUI 6's native `Layout` only on macOS 13+
-/// (which is our deployment target), so the implementation can stay
-/// short.
+/// chips row. Built on SwiftUI's native `Layout` protocol — available on
+/// our deployment target so the implementation stays short.
 private struct FlowLayoutWrapping: Layout {
     var spacing: CGFloat = 4
     var runSpacing: CGFloat = 4

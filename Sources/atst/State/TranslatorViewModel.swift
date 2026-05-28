@@ -109,6 +109,7 @@ final class TranslatorViewModel: ObservableObject {
         // the same frame.
         var apiSegments: [ProviderSegment] = []
         var aiSegment: ProviderSegment? = nil
+        var sawCacheMiss = false
         for provider in providers {
             let id = provider.id
             let cachedEntry = bypassCache ? nil : lookupCache(for: provider, source: selection.text)
@@ -117,6 +118,7 @@ final class TranslatorViewModel: ObservableObject {
                 initialState = .success(output: entry.output, latencyMs: nil, fromCache: true, cacheInfo: TranslationCache.CacheInfo(cachedAt: entry.createdAt, source: entry.source))
             } else {
                 initialState = .loading
+                sawCacheMiss = true
             }
             let segment = ProviderSegment(
                 id: id,
@@ -129,6 +131,13 @@ final class TranslatorViewModel: ObservableObject {
             } else {
                 apiSegments.append(segment)
             }
+        }
+
+        // Count this as a "new translation" if at least one segment had
+        // to actually call a provider. bypassCache (refresh button) always
+        // forces a miss so it counts here too.
+        if sawCacheMiss {
+            TranslationStats.shared.recordCacheMiss()
         }
 
         state = .text(TextSegments(
@@ -168,6 +177,9 @@ final class TranslatorViewModel: ObservableObject {
                 state = .failure(DisplayError(AppError.noScreenshotText))
             } else {
                 AppLogger.log("screenshot translation ok parsedLen=\(trimmed.count) screenshotPath=\(capture.savedPath)")
+                // Vision-path screenshots aren't cached (each image is unique),
+                // so a successful AI-vision result is always a "new" translation.
+                TranslationStats.shared.recordCacheMiss()
                 state = .screenshotSuccess(
                     output: output,
                     source: L.pick("Screenshot translation", "截图翻译"),

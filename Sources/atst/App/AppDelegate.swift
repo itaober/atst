@@ -162,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let selection = try await self.viewModel.readCurrentSelection()
                 try Task.checkCancellation()
                 AppLogger.log("translateSelection: got selection length=\(selection.text.count)")
+                TranslationStats.shared.recordTranslation()
                 self.viewModel.beginTextTranslation(source: selection.text)
                 self.panelController.show(anchor: selection.anchorRect.map { .rect($0) } ?? .mouse, activate: false)
                 AppLogger.log("translateSelection: panel shown, requesting translation")
@@ -211,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let capture = try await self.screenshotProvider.captureInteractiveScreenshot()
                 try Task.checkCancellation()
+                TranslationStats.shared.recordTranslation()
                 let config = self.settingsStore.configuration
                 if config.screenshotUseVisionOCR {
                     await self.runOCRThenTranslate(capture: capture)
@@ -341,6 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentScreenshotTask?.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
+            TranslationStats.shared.recordTranslation()
             let selection = SelectedText(text: sourceText, anchorRect: nil)
             self.viewModel.beginTextTranslation(source: sourceText)
             await self.viewModel.translateSelection(selection, bypassCache: true)
