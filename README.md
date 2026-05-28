@@ -9,7 +9,7 @@
 `a`(i) · `t`ext · `s`elect · `t`ranslate
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](#requirements)
-[![Version](https://img.shields.io/badge/version-v0.2.2-blue)](https://github.com/itaober/atst/releases/latest)
+[![Version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/itaober/atst/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-orange)](./LICENSE)
 
 Hit a hotkey, get a translation. Works **out of the box** with built-in Google + Microsoft adapters, and unlocks AI-grade dictionary / explanation when you bring your own model.

@@ -101,9 +101,12 @@ echo "→ DMG SHA-256: $DMG_SHA"
 # `version-vX.Y.Z-blue`; we substitute whatever vN.N.N is currently there
 # with the new version. Skip the commit if neither file actually changed
 # (e.g. someone already bumped them by hand).
+# `-E` for ERE — BSD sed's default BRE doesn't recognise `+` (and `\+`
+# is treated as a literal, not "one or more"), so the substitution
+# would silently fail to match on macOS without -E.
 echo "→ Syncing README version badges to $VERSION"
-BUMP_SED="s|version-v[0-9]\\+\\.[0-9]\\+\\.[0-9]\\+-blue|version-${VERSION}-blue|g"
-sed -i '' "$BUMP_SED" README.md README.zh-CN.md
+BUMP_SED="s|version-v[0-9]+\\.[0-9]+\\.[0-9]+-blue|version-${VERSION}-blue|g"
+sed -i '' -E "$BUMP_SED" README.md README.zh-CN.md
 if [[ -n "$(git status --porcelain README.md README.zh-CN.md)" ]]; then
   git add README.md README.zh-CN.md
   git commit -m "chore: bump README version badge to $VERSION"
