@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "atst",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(name: "atst", targets: ["atst"])

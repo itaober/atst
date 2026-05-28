@@ -8,7 +8,7 @@
 
 `a`(i) · `t`ext · `s`elect · `t`ranslate
 
-[![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)](#要求)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](#要求)
 [![Version](https://img.shields.io/badge/version-v0.2.2-blue)](https://github.com/itaober/atst/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-orange)](./LICENSE)
 
@@ -65,7 +65,7 @@
 
 ### 从源码构建
 
-需要 **macOS 13+** 和 **Swift 5.9+**（Xcode 15 或 Command Line Tools）。
+需要 **macOS 14+** 和 **Swift 5.9+**（Xcode 15 或 Command Line Tools）。
 
 ```bash
 git clone https://github.com/itaober/atst.git
@@ -159,7 +159,7 @@ open .build/atst.dmg
 
 ## 系统要求
 
-- macOS **13.0**（Ventura）及以上
+- macOS **14.0**（Sonoma）及以上
 - 本地缓存占用几 MB 磁盘
 - AI 功能：任何 OpenAI 兼容接口（付费或本地 LLM 均可）
 

@@ -8,7 +8,7 @@
 
 `a`(i) · `t`ext · `s`elect · `t`ranslate
 
-[![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white)](#requirements)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](#requirements)
 [![Version](https://img.shields.io/badge/version-v0.2.2-blue)](https://github.com/itaober/atst/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-orange)](./LICENSE)
 
@@ -65,7 +65,7 @@ Hit a hotkey, get a translation. Works **out of the box** with built-in Google +
 
 ### Build from source
 
-Requires **macOS 13+** and **Swift 5.9+** (Xcode 15 / Command Line Tools).
+Requires **macOS 14+** and **Swift 5.9+** (Xcode 15 / Command Line Tools).
 
 ```bash
 git clone https://github.com/itaober/atst.git
@@ -159,7 +159,7 @@ Add or remove recognition languages from the chip row below. Default: Simplified
 
 ## Requirements
 
-- macOS **13.0** (Ventura) or later
+- macOS **14.0** (Sonoma) or later
 - A handful of MB of disk for the local cache
 - For AI features: any OpenAI-compatible endpoint (paid or local-LLM)
 

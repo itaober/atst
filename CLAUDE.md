@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**atst** (`a(i)-text-select-translate`) is a tiny macOS menu-bar translator written in pure Swift + SwiftUI + AppKit. No third-party deps. macOS 13+, Swift 5.9+ (Package.swift). The product is shipped as a self-signed `.app` inside a DMG.
+**atst** (`a(i)-text-select-translate`) is a tiny macOS menu-bar translator written in pure Swift + SwiftUI + AppKit. No third-party deps. macOS 14+, Swift 5.9+ (Package.swift). The product is shipped as a self-signed `.app` inside a DMG.
 
 ## Commands
 
