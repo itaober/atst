@@ -21,6 +21,13 @@ final class SelectedTextProvider {
         let originalString = pasteboard.string(forType: .string)
         AppLogger.log("selection: snapshot string length=\(originalString?.count ?? -1)")
 
+        // Guarantee the user's clipboard is restored regardless of how this
+        // function exits — success, timeout, or `Task.sleep` throwing
+        // `CancellationError` because the user re-triggered the hotkey
+        // mid-flight. Without this guard a cancelled invocation would leak
+        // an empty (or partially-overwritten-by-Cmd+C) pasteboard.
+        defer { restoreString(originalString) }
+
         let beforeChangeCount = pasteboard.changeCount
         pasteboard.clearContents()
         AppLogger.log("selection: pasteboard cleared (changeCount before=\(beforeChangeCount), now=\(pasteboard.changeCount))")
@@ -33,7 +40,6 @@ final class SelectedTextProvider {
             let raw = pasteboard.string(forType: .string)
             if let text = normalized(raw) {
                 AppLogger.log("selection: text captured attempt=\(attempt) length=\(text.count) changeCount=\(currentChange)")
-                restoreString(originalString)
                 return text
             }
             if attempt % 4 == 0 {
@@ -42,7 +48,6 @@ final class SelectedTextProvider {
         }
 
         AppLogger.log("selection: timed out, restoring pasteboard")
-        restoreString(originalString)
         return nil
     }
 
