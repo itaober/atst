@@ -569,7 +569,7 @@ struct MenuBarSettingsView: View {
                 Divider().frame(height: 28)
                 statBlock(label: L.pick("API", "API"), value: "\(cache.apiCount)")
                 Divider().frame(height: 28)
-                statBlock(label: L.pick("Cache", "缓存"), value: Self.byteFormatter.string(fromByteCount: Int64(cache.totalBytes)))
+                cacheSizeStatBlock
                 Spacer(minLength: 6)
                 statsSparkline
                 Spacer(minLength: 6)
@@ -711,9 +711,42 @@ struct MenuBarSettingsView: View {
         }
     }
 
+    /// Cache size variant of `statBlock` — splits the byte-formatted
+    /// string ("214 KB") into number + unit and renders them on a
+    /// shared baseline with a smaller unit font. This stops "214 KB"
+    /// from wrapping when the stats row is tight, and matches the
+    /// visual rhythm of weather / activity widgets that pair a big
+    /// number with a small unit.
+    private var cacheSizeStatBlock: some View {
+        let formatted = Self.byteFormatter.string(fromByteCount: Int64(cache.totalBytes))
+        let parts = formatted.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        let number = parts.first.map(String.init) ?? formatted
+        let unit = parts.count > 1 ? String(parts[1]) : ""
+        return VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(number)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(L.pick("Cache", "缓存"))
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.tertiary)
+        }
+        .fixedSize()
+    }
+
     private static let byteFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
-        f.countStyle = .file
+        // `.memory` uses 1024-based thresholds (1 KB at 1024 bytes,
+        // 1 MB at 1024 KB), matching Activity Monitor and developer
+        // intuition. `.file` would use 1000-based steps like Finder
+        // — fine for storage but feels wrong for an in-process cache.
+        f.countStyle = .memory
         f.allowedUnits = [.useKB, .useMB]
         return f
     }()
