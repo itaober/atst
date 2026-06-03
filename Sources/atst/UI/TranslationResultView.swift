@@ -30,6 +30,24 @@ struct TranslationResultView: View {
 
     private let cornerRadius: CGFloat = 10
 
+    /// Insets applied to the tooltip's inner VStack — same values are
+    /// negated and re-applied to the header's drag handle so it can
+    /// bleed edge-to-edge for a larger hit area without changing the
+    /// visual layout. Keep these in sync by referring to the constants
+    /// rather than retyping the numbers.
+    private enum ContentInset {
+        static let horizontal: CGFloat = 11
+        static let top: CGFloat = 8
+        static let bottom: CGFloat = 7
+    }
+
+    /// How far the drag handle extends below the header's visual frame.
+    /// Bleeds into the VStack's `headerToContentSpacing` (6pt) plus a
+    /// small overlap into the first content row's top — a deliberate
+    /// design choice for a fatter hit target, not a coupling with any
+    /// specific layout constant.
+    private let dragHandleBottomBleed: CGFloat = 8
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             tooltipChrome(descriptionExpanded: descriptionExpanded, includeSurface: true)
@@ -82,9 +100,9 @@ struct TranslationResultView: View {
                 header
                 content(descriptionExpanded: expanded)
             }
-            .padding(.horizontal, 11)
-            .padding(.top, 8)
-            .padding(.bottom, 7)
+            .padding(.horizontal, ContentInset.horizontal)
+            .padding(.top, ContentInset.top)
+            .padding(.bottom, ContentInset.bottom)
             .frame(width: preferredTooltipWidth, alignment: .leading)
         }
         .frame(maxHeight: layout.maxContentHeight)
@@ -165,7 +183,22 @@ struct TranslationResultView: View {
         // pin / close) keep their own click handling because they sit
         // *above* the background drag-initiator. Cursor turns into an
         // open hand on hover so users discover the affordance.
-        .background(WindowDragHandle())
+        //
+        // Negative padding on the background lets the drag handle's
+        // AppKit view occupy a hit area BIGGER than the header's visual
+        // frame, without changing the header's own layout. The bleed
+        // values mirror the tooltip's own insets so the drag handle
+        // stretches edge-to-edge of the visible tooltip surface; the
+        // bottom bleed pushes into the VStack spacing for a fatter
+        // grab target. Content children have their own hit handling
+        // and sit ABOVE this background, so the extra hit area never
+        // steals clicks.
+        .background(
+            WindowDragHandle()
+                .padding(.top, -ContentInset.top)
+                .padding(.bottom, -dragHandleBottomBleed)
+                .padding(.horizontal, -ContentInset.horizontal)
+        )
     }
 
     private var headerTitle: String {
