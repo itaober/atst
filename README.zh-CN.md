@@ -9,7 +9,7 @@
 `a`(i) · `t`ext · `s`elect · `t`ranslate
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](#要求)
-[![Version](https://img.shields.io/badge/version-v0.3.0-blue)](https://github.com/itaober/atst/releases/latest)
+[![Version](https://img.shields.io/badge/version-v0.3.1-blue)](https://github.com/itaober/atst/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-orange)](./LICENSE)
 
 按下快捷键，立刻得到翻译。内置 Google + Microsoft 接口**开箱即用**；配置自己的 AI 模型后还能解锁词典级释义、IPA 音标和智能解释。
