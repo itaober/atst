@@ -8,6 +8,11 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 (no changes yet)
 
+## v0.3.1
+
+- Tooltip header is easier to grab — the drag region now bleeds edge-to-edge of the floating panel without changing the header's visible size, so you don't need pixel-perfect aim on the 22pt strip
+- Cache size in Stats no longer wraps to two lines — the unit (KB / MB) renders in a smaller font next to the number, and the formatter switches to 1024-based progression (1 KB at 1024 bytes, not 1000) to match developer-tool conventions
+
 ## v0.3.0
 
 - **Translation activity sparkline** — stats section gains a 14-day mini chart showing daily translation volume. Solid line counts every translation (cache hits included); dashed line counts only fresh translations (cache misses). Hover any day for a popover with that day's exact numbers
