@@ -49,12 +49,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyMonitor.onEscape = { [weak self] in
             self?.panelController.closeIfVisible() ?? false
         }
+        hotKeyMonitor.onModifierDown = { [weak self] in
+            self?.prewarmOnModifier()
+        }
         ensureHotKeyMonitorRunning()
         promptForAccessibilityIfNeeded()
         startAccessibilityWatch()
         AppLogger.log("permissions snapshot ax=\(PermissionChecker.isAccessibilityTrusted) screen=\(PermissionChecker.isScreenRecordingTrusted)")
         prewarmAllProviders(settingsStore.configuration)
-        startPrewarmTimer()
         applyCacheSettings(settingsStore.configuration)
         applyLaunchAtLogin(settingsStore.configuration.launchAtLogin)
         // Fire-and-forget update probe. The checker rate-limits itself
@@ -110,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Vision OCR's model load when the user has the OCR mode on, so the
     /// first screenshot translation doesn't pay the ~200ms cold-start.
     private func prewarmAllProviders(_ configuration: AppConfiguration) {
+        lastPrewarmAt = Date()
         if configuration.aiEnabled {
             OpenAICompatibleClient.prewarm(configuration: configuration)
         }
@@ -130,19 +133,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private var prewarmTimer: Timer?
-    private func startPrewarmTimer() {
-        prewarmTimer?.invalidate()
-        // Refresh pooled connections every 4 minutes (well under most
-        // server-side idle timeouts) so they stay hot.
-        let timer = Timer.scheduledTimer(withTimeInterval: 240, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.prewarmAllProviders(self.settingsStore.configuration)
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        prewarmTimer = timer
+    private var lastPrewarmAt: Date = .distantPast
+
+    /// Pressing the hotkey's modifier is the last moment before a
+    /// translation, so warm the pooled connections right there. Throttled
+    /// because ⌥ is also just a typing key; two minutes stays under typical
+    /// server idle timeouts. Replaces a permanent 4-minute timer that kept
+    /// pinging Google / Microsoft / the AI endpoint while the Mac sat idle.
+    private func prewarmOnModifier() {
+        guard Date().timeIntervalSince(lastPrewarmAt) > 120 else { return }
+        prewarmAllProviders(settingsStore.configuration)
     }
 
     private func applyAppearance(_ mode: AppearanceMode) {
@@ -160,8 +160,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppLogger.log("atst terminating")
         accessibilityWatchTimer?.invalidate()
         accessibilityWatchTimer = nil
-        prewarmTimer?.invalidate()
-        prewarmTimer = nil
         currentTranslationTask?.cancel()
         currentScreenshotTask?.cancel()
         hotKeyMonitor.stop()

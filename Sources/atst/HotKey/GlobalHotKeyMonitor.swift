@@ -19,6 +19,10 @@ final class GlobalHotKeyMonitor {
     /// the user's app keeps focus — so this tap is the only place that
     /// sees the keystroke.
     var onEscape: (() -> Bool)?
+    /// Called when the user presses the modifier(s) of a bound hotkey (⌥
+    /// for the defaults) — the moment before a translation. Used to warm
+    /// provider connections just in time instead of on a timer.
+    var onModifierDown: (() -> Void)?
     private var isStarted = false
     private var hasLoggedFirstKeyDown = false
 
@@ -101,6 +105,14 @@ final class GlobalHotKeyMonitor {
             AppLogger.log("CGEventTap disabled by system type=\(type.rawValue), re-enabling")
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        if type == .flagsChanged {
+            let held = GlobalHotKeyMonitor.carbonModifiers(from: event.flags)
+            if held != 0, bindings.contains(where: { $0.modifiers & held == $0.modifiers }) {
+                onModifierDown?()
             }
             return Unmanaged.passUnretained(event)
         }
