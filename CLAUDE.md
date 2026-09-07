@@ -47,6 +47,13 @@ The app has two top-level user actions that take very different code paths:
 
 Anything you change to selection translation automatically benefits screenshot-with-OCR. Don't try to unify the AI vision path into `TranslationProvider` — image input has fundamentally different message shape and constraints, and `Google` / `Microsoft` can't accept images anyway.
 
+Two more entry points feed the same `translateSelection` pipeline:
+
+- **Manual input** — `TranslationState.input` renders a `TextEditor` in the tooltip. Reached from `⌥D` with nothing selected (`AppError.noSelectedText`) or the keyboard button in the settings header; submission goes through `AppDelegate.translateText`, which the header refresh also uses (with `bypassCache: true`).
+- **Reverse translation** — `TranslatorViewModel.resolveLanguages` runs `LanguageDetector` (NaturalLanguage, on-device) on the source. If it's confidently (≥0.5) the configured target language, providers are built for `secondaryTargetLanguage` instead. Cache keys, the AI prompt and the header label all use the *effective* target, so never read `configuration.targetLanguage` directly inside the translation path.
+
+Line structure is preserved end to end: the AI prompt has an explicit keep-line-breaks rule plus a multi-paragraph example, Google and Microsoft send one array entry per non-blank line via `LineBatch`, and `VisionOCRService` merges soft-wrapped OCR lines into paragraphs (gap / indent / bullet heuristics) before handing text on.
+
 ### `TranslationProvider` protocol
 
 In `Sources/atst/Translation/TranslationProvider.swift`. Three implementations:
@@ -55,11 +62,15 @@ In `Sources/atst/Translation/TranslationProvider.swift`. Three implementations:
 - `GoogleProvider` — unofficial `translate-pa.googleapis.com` endpoint. Public API key baked in. HTML entity decoder required for the response.
 - `MicrosoftProvider` — unofficial Edge translator endpoint. JWT auth via `MicrosoftAuthToken` actor (cached, auto-refresh with 30s buffer, 401 retry).
 
+Google / Microsoft throw `AppError.providerUnavailable` / `providerRequestFailed(name:detail:)` so their rows never say "AI"; the `ai*` cases are for the OpenAI path only.
+
 All providers return `AsyncThrowingStream<TranslationProviderEmission, Error>` so streaming (AI) and one-shot (API) flows share the same surface. `TranslatorViewModel` doesn't know which kind it's driving.
 
 ### Per-segment state
 
-`TranslationState.text(TextSegments)` is the main translation state. `TextSegments` carries an array of `ProviderSegment` for API rows + an optional `ProviderSegment` for AI. Each segment has its own lifecycle (`loading` / `streaming` / `success` / `failure`) and is updated independently as its provider's stream emits. Screenshot AI vision uses its own state cases (`screenshotLoading` / `screenshotStreaming` / `screenshotSuccess`) — they're not crammed into `text(...)`.
+`TranslationState.text(TextSegments)` is the main translation state. `TextSegments` carries an array of `ProviderSegment` for API rows + an optional `ProviderSegment` for AI, plus `sourceLanguage` / `targetLanguage` for the header label. Each segment has its own lifecycle (`loading` / `streaming` / `success` / `failure`) and is updated independently as its provider's stream emits. `ProviderSegment.consecutiveFailures` (in-memory, per app run) drives the collapsed "failed N times · Disable" row once it reaches `APISegmentsBlock.collapseAfterFailures`. Screenshot AI vision uses its own state cases (`screenshotLoading` / `screenshotStreaming` / `screenshotSuccess`) — they're not crammed into `text(...)`.
+
+Row rendering that both the live tooltip and pinned notes need lives in `SegmentRows.swift` (`CopyButton`, `APISegmentsBlock`). `APISegmentsBlock` also merges successful providers with identical text into one "Google · Microsoft" row — do that kind of presentation logic there, not in the view model.
 
 When adding a provider: implement `TranslationProvider`, surface it in `TranslatorViewModel.makeProvider(for:)`, add an `APIProviderEntry` default in `AppConfiguration.defaultAPIProviders`.
 
@@ -84,17 +95,19 @@ Placement uses a Web-style flip algorithm: convert any anchor (mouse / point / r
 
 The header strip is draggable — `WindowDragHandle` (in `TooltipShared.swift`) is an `NSViewRepresentable` layered as the header's `.background`; buttons sit on top and capture their own clicks. `panel.isMovable = true` but `isMovableByWindowBackground = false` so the translation body keeps `.textSelection(.enabled)` working.
 
+`TooltipPanel` overrides `canBecomeKey` to `true` (needed for the manual-input editor); it's a `.nonactivatingPanel`, and the `⌥D` path shows it with `orderFrontRegardless` so the user's app keeps focus. Because the panel is not key after `⌥D`, **Esc is handled in the global CGEventTap** (`GlobalHotKeyMonitor.onEscape` → `FloatingPanelController.closeIfVisible`), not by a local key monitor.
+
 Pinned notes (`PinnedNoteView`) are independent windows constructed from a `PinnedNoteSnapshot` of the live tooltip's segments. They use a separate `PinnedNoteController` and are draggable via the whole window background (different from the live tooltip — pinned notes are meant to be repositioned freely).
 
 ### Settings shell
 
-`MenuBarSettingsView` is a three-page shell driven by a `[SettingsRoute]` stack:
-- **General** (root) — provider toggles, hotkeys, target language, OCR languages, cache, stats, permissions
-- **AI Translation** subpage — OpenAI-compatible config + prompts nav
+`MenuBarSettingsView` is a thin three-page shell (header / footer / routing / save / reset) driven by a `[SettingsRoute]` stack:
+- **General** (root, `SettingsGeneralPage.swift`) — permissions, target + secondary language, UI language, appearance, launch at login, pinned-note behaviour, provider toggles, hotkeys, OCR languages, cache; stats sparkline in `SettingsStatsSection.swift`
+- **AI Translation** subpage — OpenAI-compatible config (incl. Timeout, which only applies to the AI request) + prompts nav
 - **API Translation** subpage — built-in providers + future custom-HTTP placeholder
 - **Translation Prompts** sub-subpage — system + smart-explanation prompt editors
 
-When extending: prefer adding a row inside the existing General sections rather than creating a fourth page; the panel width is fixed and pages should feel like a single tool.
+When extending: prefer adding a row inside the existing General sections rather than creating a fourth page; the panel width is fixed and pages should feel like a single tool. Reset restores `defaultConfig` wholesale except the AI endpoint fields (URL, key, models).
 
 ## Release workflow
 
@@ -114,7 +127,9 @@ Release titles are version-only (`v0.1.2`, not `v0.1.2 — feature X`). Notes ar
 - **XML output protocol** is the contract between AI prompts and `TranslationOutputParser`. Any change to tag names (`atst-result` / `atst-item` / `atst-phonetic` / `atst-desc` / `atst-translatable`) needs synchronised updates to: parser, prompt assembly in `OpenAIProvider`, screenshot prompt in `ScreenshotVisionService`, and few-shot examples. Parser tolerates incomplete tags during streaming so users see token-by-token output.
 - **Provider classification**: `TranslationProviderID.segmentKind` distinguishes `ai` vs `api`. Cache source, UI grouping, and cache key shape all key off this — don't bypass it.
 - **Codesigning is ad-hoc** (`codesign --sign -` in `build-app.sh`). Each rebuild gets a fresh signature, so macOS TCC may reset Accessibility permission on upgrade. Users with the same bundle ID (`dev.local.atst`) keep their cache + settings across versions.
-- **No hotkey via Carbon**: the global hotkey monitor is a CGEventTap (`GlobalHotKeyMonitor`), not Carbon's `RegisterEventHotKey`. The trade-off: needs Accessibility permission, but doesn't pollute the global hotkey table.
+- **No hotkey via Carbon**: the global hotkey monitor is a CGEventTap (`GlobalHotKeyMonitor`), not Carbon's `RegisterEventHotKey`. The trade-off: needs Accessibility permission, but doesn't pollute the global hotkey table. The tap can't start without the grant, so `AppDelegate.promptForAccessibilityIfNeeded` shows the system prompt once per app version on launch.
+- **Prewarm on modifier press**: the tap also sees `flagsChanged`; pressing a bound hotkey's modifier triggers `prewarmAllProviders` (throttled to once per 2 min). There is deliberately no periodic prewarm timer.
+- **Launch at login** is `SMAppService.mainApp`, applied idempotently from the configuration sink; it only works from a bundled .app.
 
 ## Diagnostics
 
