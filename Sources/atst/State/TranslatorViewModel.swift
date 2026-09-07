@@ -54,9 +54,20 @@ final class TranslatorViewModel: ObservableObject {
     }
 
     /// Detected source language (header label) plus the target language the
-    /// providers should translate into.
+    /// providers should translate into. When the source is confidently
+    /// already in the target language, swap to the secondary target —
+    /// otherwise every provider would just echo the input as untranslatable.
     private func resolveLanguages(for source: String) -> (source: String?, target: String) {
-        (LanguageDetector.detect(source), configuration.targetLanguage)
+        let detection = LanguageDetector.detect(source)
+        var target = configuration.targetLanguage
+        let secondary = configuration.secondaryTargetLanguage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let detection, detection.confidence >= 0.5,
+           !secondary.isEmpty, secondary != target,
+           let targetCode = LanguageCode.bcp47(from: target),
+           LanguageDetector.primary(detection.code) == LanguageDetector.primary(targetCode) {
+            target = secondary
+        }
+        return (detection?.code, target)
     }
 
     func beginScreenshotTranslation() {
@@ -122,7 +133,7 @@ final class TranslatorViewModel: ObservableObject {
         var sawCacheMiss = false
         for provider in providers {
             let id = provider.id
-            let cachedEntry = bypassCache ? nil : lookupCache(for: provider, source: selection.text)
+            let cachedEntry = bypassCache ? nil : lookupCache(for: provider, source: selection.text, targetLanguage: languages.target)
             let initialState: SegmentState
             if let entry = cachedEntry {
                 initialState = .success(output: entry.output, latencyMs: nil, fromCache: true, cacheInfo: TranslationCache.CacheInfo(cachedAt: entry.createdAt, source: entry.source))
@@ -169,7 +180,7 @@ final class TranslatorViewModel: ObservableObject {
             }
             let task: Task<Void, Never> = Task { [weak self] in
                 guard let self else { return }
-                await self.run(provider: provider, source: selection.text)
+                await self.run(provider: provider, source: selection.text, targetLanguage: languages.target)
             }
             activeTextSegmentTasks.append(task)
         }
@@ -294,9 +305,9 @@ final class TranslatorViewModel: ObservableObject {
     /// Drive a single provider's translate() stream and patch the matching
     /// segment in `state` on each emission / final / failure. Streaming
     /// providers (AI) call this with many emissions; APIs call once.
-    private func run(provider: TranslationProvider, source: String) async {
+    private func run(provider: TranslationProvider, source: String, targetLanguage: String) async {
         let started = Date()
-        let cacheKey = cacheKey(for: provider, source: source)
+        let cacheKey = cacheKey(for: provider, source: source, targetLanguage: targetLanguage)
         do {
             for try await emission in provider.translate(text: source) {
                 try Task.checkCancellation()
@@ -342,21 +353,23 @@ final class TranslatorViewModel: ObservableObject {
         }
     }
 
-    private func cacheKey(for provider: TranslationProvider, source: String) -> String? {
+    private func cacheKey(for provider: TranslationProvider, source: String, targetLanguage: String) -> String? {
         switch provider.id.segmentKind {
         case .ai:
-            return TranslationCache.makeAIKey(text: source, configuration: configuration)
+            var config = configuration
+            config.targetLanguage = targetLanguage
+            return TranslationCache.makeAIKey(text: source, configuration: config)
         case .api:
             return TranslationCache.makeProviderKey(
                 providerID: provider.id,
                 text: source,
-                targetLanguage: configuration.targetLanguage
+                targetLanguage: targetLanguage
             )
         }
     }
 
-    private func lookupCache(for provider: TranslationProvider, source: String) -> TranslationCache.Entry? {
-        guard let key = cacheKey(for: provider, source: source) else { return nil }
+    private func lookupCache(for provider: TranslationProvider, source: String, targetLanguage: String) -> TranslationCache.Entry? {
+        guard let key = cacheKey(for: provider, source: source, targetLanguage: targetLanguage) else { return nil }
         return TranslationCache.shared.get(key: key)
     }
 

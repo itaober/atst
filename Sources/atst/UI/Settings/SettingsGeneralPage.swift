@@ -409,6 +409,8 @@ struct SettingsGeneralPage: View {
             // than mixing "label above" and "label beside" patterns.
             targetLanguageRow
             Divider().padding(.horizontal, 10)
+            secondaryTargetLanguageRow
+            Divider().padding(.horizontal, 10)
             timeoutRow
             Divider().padding(.horizontal, 10)
             uiLanguageRow
@@ -426,29 +428,54 @@ struct SettingsGeneralPage: View {
     /// preset label ("繁體中文") at .small picker size with breathing room.
     private let generalControlWidth: CGFloat = 170
 
-    /// Target language picker. Native SwiftUI `Picker` so the chevron /
-    /// hover background / focus ring come from AppKit. Saved free-form
-    /// values not in the preset list get prepended above a divider so
-    /// historical configs keep their selection visible.
     private var targetLanguageRow: some View {
-        HStack(spacing: 10) {
-            Text(L.pick("Target Language", "目标语言"))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
+        languagePickerRow(
+            title: L.pick("Target Language", "目标语言"),
+            subtitle: nil,
+            selection: $draft.targetLanguage
+        )
+    }
+
+    private var secondaryTargetLanguageRow: some View {
+        languagePickerRow(
+            title: L.pick("Secondary Language", "第二目标语言"),
+            subtitle: L.pick(
+                "Used when the source is already in the target language",
+                "原文已是目标语言时，改译成这个"
+            ),
+            selection: $draft.secondaryTargetLanguage
+        )
+    }
+
+    /// Native SwiftUI `Picker` so the chevron / hover background / focus
+    /// ring come from AppKit. A saved free-form value not in the preset list
+    /// is prepended above a divider so historical configs keep their
+    /// selection visible.
+    ///
+    /// `.menu`-style Pickers don't stretch to fill `.frame(width:)` — the
+    /// popup button hugs its longest option label — so the picker sits in a
+    /// trailing-aligned fixed-width container to share the right edge with
+    /// the segmented controls below.
+    private func languagePickerRow(title: String, subtitle: String?, selection: Binding<String>) -> some View {
+        let isCustom = !selection.wrappedValue.isEmpty
+            && !TargetLanguagePreset.all.contains(selection.wrappedValue)
+        return HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer(minLength: 8)
-            // Wrap the Picker in a fixed-width right-aligned container.
-            // `.menu`-style Pickers don't stretch to fill `.frame(width:)`
-            // — the popup button hugs its longest option label — so a
-            // bare `.frame(width: 170)` would render the button at the
-            // *leading* edge, leaving the right edge short of the
-            // segmented controls below it. Wrapping in an HStack with a
-            // leading Spacer and an outer fixed-width container pins the
-            // button's right edge to the same x as the other rows.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)
-                Picker("", selection: $draft.targetLanguage) {
-                    if isCustomTargetLanguage {
-                        Text(draft.targetLanguage).tag(draft.targetLanguage)
+                Picker("", selection: selection) {
+                    if isCustom {
+                        Text(selection.wrappedValue).tag(selection.wrappedValue)
                         Divider()
                     }
                     ForEach(TargetLanguagePreset.all, id: \.self) { preset in
@@ -456,12 +483,12 @@ struct SettingsGeneralPage: View {
                     }
                 }
                 .labelsHidden()
-                // .small (not .mini): the target language is the most-changed
-                // value in this section, so its text ("简体中文" etc.) should
-                // be as readable as the row label next to it.
+                // .small (not .mini): the language is the most-changed value
+                // in this section, so its text should read as clearly as
+                // the row label next to it.
                 .controlSize(.small)
                 .fixedSize()
-                .onChange(of: draft.targetLanguage) { _ in
+                .onChange(of: selection.wrappedValue) { _ in
                     save()
                 }
             }
@@ -469,11 +496,6 @@ struct SettingsGeneralPage: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-    }
-
-    private var isCustomTargetLanguage: Bool {
-        !draft.targetLanguage.isEmpty
-            && !TargetLanguagePreset.all.contains(draft.targetLanguage)
     }
 
     /// Inline numeric timeout. The text field sits inside a fixed-width

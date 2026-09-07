@@ -284,6 +284,7 @@ struct MenuBarSettingsView: View {
         draft.ocrLanguages = defaults.ocrLanguages
         draft.uiLanguage = defaults.uiLanguage
         draft.targetLanguage = defaults.targetLanguage
+        draft.secondaryTargetLanguage = defaults.secondaryTargetLanguage
         draft.timeoutSeconds = defaults.timeoutSeconds
         save()
     }

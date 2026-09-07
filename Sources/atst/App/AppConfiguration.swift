@@ -45,6 +45,10 @@ struct AppConfiguration: Codable, Equatable {
     var textModel: String
     var screenshotModel: String
     var targetLanguage: String
+    /// Used instead of `targetLanguage` when the source is already in the
+    /// target language (Chinese ⇄ English for most users). Empty disables
+    /// the swap.
+    var secondaryTargetLanguage: String
     var systemPrompt: String
     var smartExplanationPrompt: String
     var timeoutSeconds: Double
@@ -102,6 +106,7 @@ struct AppConfiguration: Codable, Equatable {
         textModel: "",
         screenshotModel: "",
         targetLanguage: L.isChinese ? "简体中文" : "English",
+        secondaryTargetLanguage: L.isChinese ? "English" : "简体中文",
         systemPrompt: defaultSystemPrompt,
         smartExplanationPrompt: defaultSmartExplanationPrompt,
         // 10s default — long enough for typical word/sentence translations
@@ -134,6 +139,7 @@ struct AppConfiguration: Codable, Equatable {
         textModel: String,
         screenshotModel: String,
         targetLanguage: String,
+        secondaryTargetLanguage: String = "",
         systemPrompt: String,
         smartExplanationPrompt: String,
         timeoutSeconds: Double,
@@ -159,6 +165,7 @@ struct AppConfiguration: Codable, Equatable {
         self.textModel = textModel
         self.screenshotModel = screenshotModel
         self.targetLanguage = targetLanguage
+        self.secondaryTargetLanguage = secondaryTargetLanguage
         self.systemPrompt = systemPrompt
         self.smartExplanationPrompt = smartExplanationPrompt
         self.timeoutSeconds = timeoutSeconds
@@ -199,6 +206,7 @@ struct AppConfiguration: Codable, Equatable {
         textModel = try container.decodeIfPresent(String.self, forKey: .textModel) ?? defaults.textModel
         screenshotModel = try container.decodeIfPresent(String.self, forKey: .screenshotModel) ?? defaults.screenshotModel
         targetLanguage = try container.decodeIfPresent(String.self, forKey: .targetLanguage) ?? defaults.targetLanguage
+        secondaryTargetLanguage = try container.decodeIfPresent(String.self, forKey: .secondaryTargetLanguage) ?? defaults.secondaryTargetLanguage
         systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) ?? defaults.systemPrompt
         smartExplanationPrompt = try container.decodeIfPresent(String.self, forKey: .smartExplanationPrompt) ?? defaults.smartExplanationPrompt
         timeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .timeoutSeconds) ?? defaults.timeoutSeconds

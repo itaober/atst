@@ -354,7 +354,7 @@ final class TooltipSpeaker {
     /// region-tagged ("en-US" / "zh-CN"), so match on the primary subtag
     /// and let the system default fill in when nothing is installed.
     private static func voice(for text: String) -> AVSpeechSynthesisVoice? {
-        let detected = LanguageDetector.detect(text) ?? "en"
+        let detected = LanguageDetector.detect(text)?.code ?? "en"
         let primary = detected.split(separator: "-").first.map(String.init) ?? detected
         let preferred: String? = switch detected {
         case "zh-Hans": "zh-CN"
