@@ -161,6 +161,7 @@ struct OpenAIProvider: TranslationProvider {
         其它细节：
         - 译文保留代码片段、命令、路径、变量名、URL、错误信息等"标识符级"内容原文。
         - 输入本身就是目标语言时，原样回写到单个 `<atst-item>` 并附 `<atst-translatable>false</atst-translatable>`。
+        - 多行 / 多段输入：译文必须逐行、逐段对应原文的换行结构——原文有几行译文就有几行，空行照样保留；不要把多段合并成一段，也不要自行增删换行。Markdown 列表 / 标题符号保留在行首。
         """)
 
         if includePhonetic {
@@ -191,6 +192,20 @@ struct OpenAIProvider: TranslationProvider {
         输出：
         <atst-result>
           <atst-item>你好，世界。</atst-item>
+        </atst-result>
+
+        示例 1b（多段落，换行与空行逐一对应）：
+        输入：
+        "Install the CLI first.
+
+        - Run `atst --help` to list commands.
+        - Then restart the app."
+        输出：
+        <atst-result>
+          <atst-item>先安装 CLI。
+
+        - 运行 `atst --help` 列出命令。
+        - 然后重启应用。</atst-item>
         </atst-result>
         """)
 

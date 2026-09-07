@@ -19,8 +19,8 @@ import Foundation
 ///     Authorization: Bearer <token>
 ///     Ocp-Apim-Subscription-Key: <token>
 ///     Content-Type: application/json
-///   Body: [{"Text":"<text>"}]
-///   → [{"translations":[{"text":"<translated>","to":"<to>"}]}]
+///   Body: [{"Text":"<line 1>"}, {"Text":"<line 2>"}, …]
+///   → [{"translations":[{"text":"<translated>","to":"<to>"}]}, …]
 struct MicrosoftProvider: TranslationProvider {
     let id: TranslationProviderID = .microsoft
     let displayName: String = "Microsoft"
@@ -91,13 +91,21 @@ struct MicrosoftProvider: TranslationProvider {
             throw AppError.aiRequestFailed("Microsoft: failed to build URL")
         }
 
+        // One array entry per non-blank line so the source's line /
+        // paragraph structure survives — see `LineBatch`.
+        let batch = LineBatch(text: text)
+        let payloadLines = batch.payload
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(token, forHTTPHeaderField: "Ocp-Apim-Subscription-Key")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [["Text": text]], options: [])
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: payloadLines.map { ["Text": $0] },
+            options: []
+        )
 
         let started = Date()
         let (data, response): (Data, URLResponse)
@@ -118,7 +126,10 @@ struct MicrosoftProvider: TranslationProvider {
             throw AppError.aiRequestFailed("Microsoft HTTP \(http.statusCode): \(preview)")
         }
 
-        let translated = try parseResponse(data: data).trimmingCharacters(in: .whitespacesAndNewlines)
+        let translatedLines = try parseResponse(data: data)
+        guard let translated = batch.merge(translatedLines) else {
+            throw AppError.aiRequestFailed("Microsoft: line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
+        }
         guard !translated.isEmpty else { throw AppError.emptyTranslation }
         let untranslatable = looksUntranslatable(source: text, result: translated)
         let output = TranslationOutput(
@@ -131,16 +142,20 @@ struct MicrosoftProvider: TranslationProvider {
         return TranslationProviderEmission(output: output, raw: translated, isFinal: true)
     }
 
-    private func parseResponse(data: Data) throws -> String {
+    /// Response is one element per request entry:
+    ///   [{"translations":[{"text":"…","to":"…"}]}, …]
+    private func parseResponse(data: Data) throws -> [String] {
         let json = try JSONSerialization.jsonObject(with: data, options: [])
-        if let array = json as? [[String: Any]],
-           let first = array.first,
-           let translations = first["translations"] as? [[String: Any]],
-           let firstTranslation = translations.first,
-           let text = firstTranslation["text"] as? String {
+        guard let array = json as? [[String: Any]] else {
+            throw AppError.aiRequestFailed("Microsoft: unexpected response shape")
+        }
+        return try array.map { entry in
+            guard let translations = entry["translations"] as? [[String: Any]],
+                  let text = translations.first?["text"] as? String else {
+                throw AppError.aiRequestFailed("Microsoft: unexpected response shape")
+            }
             return text
         }
-        throw AppError.aiRequestFailed("Microsoft: unexpected response shape")
     }
 
     private func looksUntranslatable(source: String, result: String) -> Bool {

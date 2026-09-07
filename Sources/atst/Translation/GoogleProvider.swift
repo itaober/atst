@@ -68,19 +68,10 @@ struct GoogleProvider: TranslationProvider {
         // string is rejected with HTTP 400 by this endpoint.
         let toCode = LanguageCode.bcp47(from: targetLanguage) ?? "en"
 
-        // translateHtml accepts a single text or an array of texts and
-        // returns a parallel array of translations. Critically: it
-        // collapses any `\n` inside a single text into a single output
-        // blob (newlines / paragraph structure / markdown list breaks
-        // all disappear). To preserve the source's line structure we
-        // split by `\n`, send the non-blank lines as separate array
-        // entries, and reassemble afterwards — empty lines are kept at
-        // their original index without burning a slot in the request.
-        let lines = text.components(separatedBy: "\n")
-        let payloadIndices = lines.indices.filter { idx in
-            !lines[idx].trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        let payloadLines = payloadIndices.map { lines[$0] }
+        // translateHtml collapses `\n` inside a single text, so lines go
+        // out as separate array entries — see `LineBatch`.
+        let batch = LineBatch(text: text)
+        let payloadLines = batch.payload
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -114,23 +105,11 @@ struct GoogleProvider: TranslationProvider {
             throw AppError.aiRequestFailed("Google HTTP \(http.statusCode): \(bodyPreview)")
         }
 
-        let translatedLines = try parseResponse(data: data)
-        // Defensive: count mismatch shouldn't happen under normal
-        // operation (Google echoes the same array length), but if the
-        // server changes shape we'd rather fail loud than silently mis-
-        // align translations to source lines.
-        guard translatedLines.count == payloadLines.count else {
+        // Google returns `&amp;` / `&#39;` etc. regardless of source markup.
+        let translatedLines = try parseResponse(data: data).map(HTMLEntityDecoder.decode)
+        guard let decoded = batch.merge(translatedLines) else {
             throw AppError.aiRequestFailed("Google: line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
         }
-
-        // Reassemble: drop translated lines back into their original
-        // indices, blank lines stay blank. HTML-decode each line as we
-        // go since Google returns `&amp;` / `&#39;` etc.
-        var assembled = lines
-        for (slotIndex, originalIndex) in payloadIndices.enumerated() {
-            assembled[originalIndex] = HTMLEntityDecoder.decode(translatedLines[slotIndex])
-        }
-        let decoded = assembled.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !decoded.isEmpty else { throw AppError.emptyTranslation }
 
         let untranslatable = looksUntranslatable(source: text, result: decoded)
