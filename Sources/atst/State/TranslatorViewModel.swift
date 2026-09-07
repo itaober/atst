@@ -15,6 +15,10 @@ final class TranslatorViewModel: ObservableObject {
     /// active provider segment. Replaced wholesale whenever a new
     /// selection arrives so older results can't write into the newer state.
     private var activeTextSegmentTasks: [Task<Void, Never>] = []
+    /// Per-provider run of failures since the last success, in memory only.
+    /// Drives the collapsed "failed N times · Disable" row so a blocked
+    /// endpoint stops shouting a full error on every translation.
+    private var consecutiveFailures: [TranslationProviderID: Int] = [:]
 
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
@@ -223,6 +227,26 @@ final class TranslatorViewModel: ObservableObject {
         state = .input
     }
 
+    /// "Disable" on a collapsed failure row. Persists through the settings
+    /// store so the provider stops running, and drops its row from the
+    /// tooltip that's currently on screen.
+    func disableAPIProvider(_ id: TranslationProviderID) {
+        var config = settingsStore.configuration
+        guard let index = config.apiProviders.firstIndex(where: { $0.id == id.rawValue }) else { return }
+        config.apiProviders[index].enabled = false
+        do {
+            try settingsStore.save(config)
+        } catch {
+            AppLogger.log("disable provider \(id.rawValue) failed to save: \(error)")
+            return
+        }
+        consecutiveFailures[id] = 0
+        if case .text(var segments) = state {
+            segments.api.removeAll { $0.id == id }
+            state = .text(segments)
+        }
+    }
+
     // MARK: - Provider plumbing
 
     /// Build the list of providers we should fan out to, honoring the AI/API
@@ -318,6 +342,7 @@ final class TranslatorViewModel: ObservableObject {
                 try Task.checkCancellation()
                 let latencyMs = Int(Date().timeIntervalSince(started) * 1000)
                 if emission.isFinal {
+                    consecutiveFailures[provider.id] = 0
                     updateSegment(id: provider.id) { segment in
                         segment.state = .success(
                             output: emission.output,
@@ -325,6 +350,7 @@ final class TranslatorViewModel: ObservableObject {
                             fromCache: false,
                             cacheInfo: nil
                         )
+                        segment.consecutiveFailures = 0
                     }
                     // Cache only successful, non-untranslatable results that
                     // actually produced content.
@@ -351,10 +377,13 @@ final class TranslatorViewModel: ObservableObject {
             // Surface nothing — a newer translation has already replaced our
             // segments; writing into a stale segment would race.
         } catch {
+            consecutiveFailures[provider.id, default: 0] += 1
+            let failures = consecutiveFailures[provider.id, default: 0]
             updateSegment(id: provider.id) { segment in
                 segment.state = .failure(DisplayError(error))
+                segment.consecutiveFailures = failures
             }
-            AppLogger.log("provider \(provider.id.rawValue) failed: \(error)")
+            AppLogger.log("provider \(provider.id.rawValue) failed (\(failures) in a row): \(error)")
         }
     }
 
@@ -554,6 +583,9 @@ struct ProviderSegment: Equatable, Identifiable {
     let displayName: String
     let modelHint: String?
     var state: SegmentState
+    /// Failures since this provider last succeeded (this app run). At
+    /// `APISegmentsBlock.collapseAfterFailures` the row collapses.
+    var consecutiveFailures: Int = 0
 }
 
 /// Per-segment lifecycle state. AI hits `.streaming(...)` between `.loading`

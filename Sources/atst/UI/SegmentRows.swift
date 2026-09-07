@@ -44,11 +44,23 @@ struct CopyButton: View {
 struct APISegmentsBlock: View {
     let segments: [ProviderSegment]
     var isSnapshot = false
+    /// Handler for the "Disable" button on a collapsed failure row. nil
+    /// (pinned notes) hides the button.
+    var onDisable: ((TranslationProviderID) -> Void)? = nil
+
+    /// A provider that has failed this many times in a row stops rendering
+    /// its full error and collapses to one line with a Disable button.
+    static let collapseAfterFailures = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(mergedRows, id: \.id) { row in
-                APISegmentRow(title: row.title, segment: row.segment, isSnapshot: isSnapshot)
+                APISegmentRow(
+                    title: row.title,
+                    segment: row.segment,
+                    isSnapshot: isSnapshot,
+                    onDisable: onDisable
+                )
             }
         }
     }
@@ -86,6 +98,7 @@ private struct APISegmentRow: View {
     let title: String
     let segment: ProviderSegment
     let isSnapshot: Bool
+    let onDisable: ((TranslationProviderID) -> Void)?
 
     var body: some View {
         // Provider name sits as a small label *above* the translation row(s).
@@ -114,17 +127,42 @@ private struct APISegmentRow: View {
         case .success(let output, _, _, _):
             successRows(output)
         case .failure(let error):
-            HStack(alignment: .top, spacing: 7) {
-                Text(error.title)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.red.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(error.message ?? error.title)
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.red.opacity(0.8))
-                    .frame(width: 20, height: 20)
+            if segment.consecutiveFailures >= APISegmentsBlock.collapseAfterFailures {
+                collapsedFailureRow(error)
+            } else {
+                HStack(alignment: .top, spacing: 7) {
+                    Text(error.title)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.red.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help(error.message ?? error.title)
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.red.opacity(0.8))
+                        .frame(width: 20, height: 20)
+                }
+            }
+        }
+    }
+
+    /// One quiet line instead of a red error on every translation once a
+    /// provider is clearly down (blocked network, dead endpoint). The last
+    /// error stays reachable via the tooltip.
+    private func collapsedFailureRow(_ error: DisplayError) -> some View {
+        HStack(spacing: 7) {
+            Text(L.pick(
+                "Failed \(segment.consecutiveFailures) times in a row",
+                "连续失败 \(segment.consecutiveFailures) 次"
+            ))
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .help(error.message ?? error.title)
+            Spacer(minLength: 4)
+            if let onDisable {
+                Button(L.pick("Disable", "停用")) { onDisable(segment.id) }
+                    .controlSize(.mini)
+                    .help(L.pick("Turn this provider off in settings", "在设置中关闭这个翻译源"))
             }
         }
     }

@@ -363,7 +363,9 @@ struct TranslationResultView: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 if !segments.api.isEmpty {
-                    APISegmentsBlock(segments: segments.api)
+                    APISegmentsBlock(segments: segments.api) { id in
+                        viewModel.disableAPIProvider(id)
+                    }
                 }
                 if !segments.api.isEmpty && segments.ai != nil {
                     Divider().padding(.vertical, 1)
