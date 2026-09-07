@@ -119,11 +119,14 @@ final class FloatingPanelController {
         return true
     }
 
-    /// Manual-entry mode. Unlike the ⌥D tooltip this makes the panel key so
-    /// the editor takes keystrokes.
+    /// Manual-entry mode. The panel becomes key so the editor takes
+    /// keystrokes, but the app is not activated — a nonactivating panel
+    /// receives keys while the user's app stays frontmost, and skipping
+    /// activation avoids the focus-switch flash.
     func showInput(anchor: FloatingPanelAnchor) {
         viewModel.showInput()
-        show(anchor: anchor, activate: true)
+        show(anchor: anchor, activate: false)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - Pin handling

@@ -117,8 +117,10 @@ struct TranslationResultView: View {
     /// Two-tier tooltip width — see `TooltipSizing` for the rule and why.
     /// Same logic is shared with `PinnedNoteView` so a wide live tooltip
     /// remains wide once pinned.
+    /// In input mode the width follows the typed text with the same rule,
+    /// so the panel doesn't jump when the result replaces the editor.
     private var preferredTooltipWidth: CGFloat {
-        if case .input = viewModel.state { return TooltipSizing.wideWidth }
+        if case .input = viewModel.state { return TooltipSizing.preferredWidth(forSource: inputText) }
         return TooltipSizing.preferredWidth(forSource: viewModel.state.sourceText)
     }
 

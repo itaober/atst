@@ -49,7 +49,7 @@ Anything you change to selection translation automatically benefits screenshot-w
 
 Two more entry points feed the same `translateSelection` pipeline:
 
-- **Manual input** — `TranslationState.input` renders a `TextEditor` in the tooltip. Reached from `⌥D` with nothing selected (`AppError.noSelectedText`) or the keyboard button in the settings header; submission goes through `AppDelegate.translateText`, which the header refresh also uses (with `bypassCache: true`).
+- **Manual input** — `TranslationState.input` renders a `TextEditor` in the tooltip; the panel is made key without activating the app, and its width follows the typed text with the normal `TooltipSizing` rule so the result doesn't jump. Reached from `⌥D` with nothing selected (`AppError.noSelectedText`); submission goes through `AppDelegate.translateText`, which the header refresh also uses (with `bypassCache: true`).
 - **Reverse translation** — `TranslatorViewModel.resolveLanguages` runs `LanguageDetector` (NaturalLanguage, on-device) on the source. If it's confidently (≥0.5) the configured target language, providers are built for `secondaryTargetLanguage` instead. Cache keys, the AI prompt and the header label all use the *effective* target, so never read `configuration.targetLanguage` directly inside the translation path.
 
 Line structure is preserved end to end: the AI prompt has an explicit keep-line-breaks rule plus a multi-paragraph example, Google and Microsoft send one array entry per non-blank line via `LineBatch`, and `VisionOCRService` merges soft-wrapped OCR lines into paragraphs (gap / indent / bullet heuristics) before handing text on.

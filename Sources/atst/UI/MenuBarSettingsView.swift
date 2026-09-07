@@ -17,7 +17,6 @@ struct MenuBarSettingsView: View {
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var cache: TranslationCache = .shared
     @ObservedObject var stats: TranslationStats = .shared
-    var onOpenInput: () -> Void
     var onQuit: () -> Void
 
     @State private var draft: AppConfiguration
@@ -30,12 +29,10 @@ struct MenuBarSettingsView: View {
     init(
         settingsStore: SettingsStore,
         updateChecker: UpdateChecker,
-        onOpenInput: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         self.updateChecker = updateChecker
-        self.onOpenInput = onOpenInput
         self.onQuit = onQuit
         _draft = State(initialValue: settingsStore.configuration)
     }
@@ -129,16 +126,6 @@ struct MenuBarSettingsView: View {
             }
 
             if routeStack.isEmpty {
-                Button(action: onOpenInput) {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .help(L.pick("Type text to translate", "手动输入翻译"))
-
                 Button(action: onQuit) {
                     Image(systemName: "power")
                         .font(.system(size: 12, weight: .medium))

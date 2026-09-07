@@ -1,18 +1,40 @@
 import AppKit
+import ApplicationServices
 import Carbon
 
 @MainActor
 final class SelectedTextProvider {
-    /// Reads the current selection by simulating ⌘C and snooping the
-    /// pasteboard. Assumes Accessibility is already granted —
+    /// Reads the current selection: the Accessibility API first (instant,
+    /// leaves the pasteboard alone), then simulated ⌘C + pasteboard
+    /// snooping. Assumes Accessibility is already granted —
     /// `AppDelegate.translateSelection` gates on
-    /// `PermissionChecker.isAccessibilityTrusted` before invoking this,
-    /// so the inner check is unnecessary here.
+    /// `PermissionChecker.isAccessibilityTrusted` before invoking this.
     func selectedText() async throws -> SelectedText {
+        if let text = readSelectedTextViaAccessibility() {
+            AppLogger.log("selection: AX path length=\(text.count)")
+            return SelectedText(text: text, anchorRect: nil)
+        }
         if let text = try await readSelectedTextUsingCopyShortcut() {
             return SelectedText(text: text, anchorRect: nil)
         }
         throw AppError.noSelectedText
+    }
+
+    /// Ask the frontmost app's focused element for its selection. Many
+    /// Chromium / Electron apps answer with nothing even when text is
+    /// selected, so an empty result only means "fall back to ⌘C" — it is
+    /// never evidence that nothing is selected.
+    private func readSelectedTextViaAccessibility() -> String? {
+        var focused: CFTypeRef?
+        let system = AXUIElementCreateSystemWide()
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused else { return nil }
+        let element = focused as! AXUIElement
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &value) == .success else {
+            return nil
+        }
+        return normalized(value as? String)
     }
 
     private func readSelectedTextUsingCopyShortcut() async throws -> String? {
@@ -34,7 +56,10 @@ final class SelectedTextProvider {
         postCopyShortcut()
         AppLogger.log("selection: Cmd+C posted")
 
-        for attempt in 0..<24 {
+        // 600 ms cap. Apps that do respond to ⌘C land within ~100–300 ms
+        // even when slow (Electron); the rest of the wait was only ever
+        // paid in the no-selection case, where it delays the input box.
+        for attempt in 0..<12 {
             try await Task.sleep(nanoseconds: 50_000_000)
             let currentChange = pasteboard.changeCount
             let raw = pasteboard.string(forType: .string)

@@ -23,9 +23,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var statusBarController: StatusBarController = StatusBarController(
         settingsStore: settingsStore,
         updateChecker: updateChecker,
-        onOpenInput: { [weak self] in
-            self?.panelController.showInput(anchor: .mouse)
-        },
         onQuit: {
             NSApp.terminate(nil)
         }

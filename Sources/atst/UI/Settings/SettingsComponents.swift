@@ -49,7 +49,7 @@ struct SettingsToggleRow: View {
             Spacer(minLength: 4)
             Toggle("", isOn: $isOn)
                 .toggleStyle(.switch)
-                .controlSize(.small)
+                .controlSize(.mini)
                 .labelsHidden()
                 .onChange(of: isOn) { _ in
                     onChange()

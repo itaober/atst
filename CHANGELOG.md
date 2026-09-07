@@ -8,19 +8,19 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 - **Line breaks survive translation** — the AI prompt now demands the source's line / paragraph structure, Microsoft translates line by line like Google, and screenshot OCR merges soft-wrapped lines inside a paragraph so line-by-line translators see whole sentences
 - **Reverse translation** — when the selection is already in your target language it's translated into a new **Secondary language** setting instead (Chinese ⇄ English by default)
-- **Type to translate** — `⌥D` with nothing selected, or the keyboard button in the settings header, opens a text box in the tooltip; Return translates, Shift+Return inserts a newline
+- **Type to translate** — `⌥D` with nothing selected opens a text box in the tooltip; Return translates, Shift+Return inserts a newline
 - **Launch at login** toggle in General settings
 - **First-launch Accessibility prompt** — without the grant the hotkeys could never fire, and a fresh install sat there silently; the app now asks once per version and opens settings
 - Tooltip header shows the detected source language and the target (`English → 简体中文`) instead of the app name
 - Google and Microsoft rows merge into one when they return the same text
 - A provider that fails three times in a row collapses to a single line with a **Disable** button instead of a full error every time
 - `Esc` dismisses the tooltip (it never could — the panel wasn't a key window)
+- Selection is read through the Accessibility API first (instant, no clipboard round-trip); the ⌘C fallback gives up after 0.6 s instead of 1.2 s, so the input box appears faster when nothing is selected
 - Google / Microsoft errors are labelled with the provider's name instead of "AI"
 - Pronunciation picks a voice matching the detected language instead of the system locale
 - AI few-shot examples follow the target language (English targets no longer see Chinese examples)
-- Menu bar shows a template translate icon instead of the `atst` text label
 - Connection prewarming happens when you press a hotkey's modifier key, replacing a permanent 4-minute timer
-- Settings: permission rows drop the redundant refresh button; Timeout moves to the AI page (it never applied to Google / Microsoft); Reset restores everything except the AI endpoint, key and models; the two General toggles are the same size
+- Settings: permission rows drop the redundant refresh button; Timeout moves to the AI page (it never applied to Google / Microsoft); Reset restores everything except the AI endpoint, key and models; every toggle uses the same compact size
 - README: corrected the Accessibility install step, added Troubleshooting, Apple Silicon requirement, fuller Privacy notes, environment-variable overrides; roadmap trimmed of shipped items
 
 ## v0.3.1

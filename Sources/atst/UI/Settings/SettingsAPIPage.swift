@@ -73,7 +73,7 @@ struct SettingsAPIPage: View {
                 }
             ))
             .toggleStyle(.switch)
-            .controlSize(.small)
+            .controlSize(.mini)
             .labelsHidden()
             .disabled(!draft.apiEnabled)
             .opacity(draft.apiEnabled ? 1 : 0.4)

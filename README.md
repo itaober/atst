@@ -24,7 +24,7 @@ Hit a hotkey, get a translation. Works **out of the box** with built-in Google +
 
 - ⚡ **One-hotkey translation** — press `⌥D` on any selected text, anywhere in macOS, and a tooltip appears in ~200ms. `Esc` dismisses it
 - 🔁 **Reverse translation** — text that's already in your target language is translated into your secondary language instead (Chinese ⇄ English out of the box)
-- ⌨️ **Type to translate** — press `⌥D` with nothing selected, or hit the keyboard icon in settings, and type or paste
+- ⌨️ **Type to translate** — press `⌥D` with nothing selected and a text box appears; type or paste
 - 🖼️ **Screenshot translation** — press `⌥S`, drag a region, get the translation. On-device Vision OCR by default (fast + private + free); falls back to AI vision if you've configured one
 - 🔀 **Multi-source side-by-side** — Google and Microsoft results stack above your AI result; identical results merge into one row
 - 🧠 **AI dictionary mode** — for single words, AI providers can return multiple meanings, IPA phonetics, and a short usage explanation
@@ -60,8 +60,8 @@ Hit a hotkey, get a translation. Works **out of the box** with built-in Google +
 
 1. Grab the latest `atst.dmg` from the [Releases page](https://github.com/itaober/atst/releases)
 2. Open the DMG and drag **atst** into your `Applications` folder
-3. Launch atst — a translate icon appears in your menu bar (top-right of the screen)
-4. On first launch atst asks for **Accessibility** permission. The global hotkeys can't work without it, so click **Open System Settings** and switch atst on under Privacy & Security → Accessibility. Skipped the dialog? Click the menu bar icon and use the gear next to the permission row
+3. Launch atst — a small **`atst`** label appears in your menu bar (top-right of the screen)
+4. On first launch atst asks for **Accessibility** permission. The global hotkeys can't work without it, so click **Open System Settings** and switch atst on under Privacy & Security → Accessibility. Skipped the dialog? Click the menu bar label and use the gear next to the permission row
 5. Optional: turn on **Launch at login** in the General settings
 
 > **Heads up**: because atst is a self-signed app (no Apple Developer ID yet), the first launch may show "atst can't be opened because it is from an unidentified developer". Right-click the app → **Open** → **Open anyway**, or run `xattr -d com.apple.quarantine /Applications/atst.app` once. Every release is re-signed, so macOS may ask for Accessibility again after an upgrade.
@@ -189,7 +189,7 @@ Add or remove recognition languages from the chip row below. Default: Simplified
 
 ## Troubleshooting
 
-- **Hotkeys do nothing** — Accessibility isn't granted (menu bar icon → Permissions shows an orange dot), or another app has turned on macOS Secure Keyboard Entry (1Password autofill, Terminal with that option on, a focused password field); settings shows a warning while that's the case.
+- **Hotkeys do nothing** — Accessibility isn't granted (menu bar label → Permissions shows an orange dot), or another app has turned on macOS Secure Keyboard Entry (1Password autofill, Terminal with that option on, a focused password field); settings shows a warning while that's the case.
 - **Screenshot translation produces nothing** — check Screen Recording permission, then open `/tmp/atst-last-screenshot.png` to see what was captured.
 - **Reporting a bug** — attach `/tmp/atst.log` (rotates at ~1 MB to `/tmp/atst.old.log`).
 - **Scripting the AI config** — these environment variables override the saved settings for one run: `ATST_AI_BASE_URL`, `ATST_API_KEY`, `ATST_TEXT_MODEL`, `ATST_SCREENSHOT_MODEL`, `ATST_TARGET_LANGUAGE`.

@@ -6,7 +6,6 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let settingsStore: SettingsStore
     private let updateChecker: UpdateChecker
-    private let onOpenInput: () -> Void
     private let onQuit: () -> Void
 
     private var panel: NSPanel?
@@ -16,30 +15,21 @@ final class StatusBarController: NSObject {
     init(
         settingsStore: SettingsStore,
         updateChecker: UpdateChecker,
-        onOpenInput: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         self.updateChecker = updateChecker
-        self.onOpenInput = onOpenInput
         self.onQuit = onQuit
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
         if let button = statusItem.button {
-            // Template SF Symbol so the glyph takes the menu bar's tint and
-            // dark-mode treatment like every other status item, and sits in
-            // a square slot instead of a text-width one.
-            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-            if let image = NSImage(systemSymbolName: "translate", accessibilityDescription: Branding.appName)?
-                .withSymbolConfiguration(symbolConfig) {
-                image.isTemplate = true
-                button.image = image
-                button.imagePosition = .imageOnly
-            } else {
-                button.title = Branding.appName
-                button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-            }
+            // Plain "atst" text in the menu bar — matches our minimalist
+            // tooltip feel and avoids guessing an icon.
+            button.title = Branding.appName
+            button.image = nil
+            button.imagePosition = .noImage
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
             button.target = self
             button.action = #selector(toggle)
             button.toolTip = Branding.appName
@@ -124,10 +114,6 @@ final class StatusBarController: NSObject {
         let content = MenuBarSettingsView(
             settingsStore: settingsStore,
             updateChecker: updateChecker,
-            onOpenInput: { [weak self] in
-                self?.close()
-                self?.onOpenInput()
-            },
             onQuit: onQuit
         )
         let host = NSHostingController(rootView: content)
