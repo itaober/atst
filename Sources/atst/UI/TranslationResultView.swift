@@ -24,9 +24,14 @@ struct TranslationResultView: View {
     /// Wired up by the panel controller so a tooltip-driven settings open
     /// can dismiss the tooltip first.
     var onOpenSettings: () -> Void = {}
+    /// Invoked with the typed text when the user submits the manual-entry
+    /// editor (Return or the Translate button).
+    var onSubmitInput: (String) -> Void = { _ in }
 
     @State private var descriptionExpanded: Bool = false
     @State private var lastSeenSourceForExpansion: String = ""
+    @State private var inputText: String = ""
+    @FocusState private var inputFocused: Bool
 
     private let cornerRadius: CGFloat = 10
 
@@ -113,7 +118,8 @@ struct TranslationResultView: View {
     /// Same logic is shared with `PinnedNoteView` so a wide live tooltip
     /// remains wide once pinned.
     private var preferredTooltipWidth: CGFloat {
-        TooltipSizing.preferredWidth(forSource: viewModel.state.sourceText)
+        if case .input = viewModel.state { return TooltipSizing.wideWidth }
+        return TooltipSizing.preferredWidth(forSource: viewModel.state.sourceText)
     }
 
     // MARK: - Header
@@ -209,6 +215,8 @@ struct TranslationResultView: View {
             return model.isEmpty ? Branding.appName : model
         case .text(let segments):
             return segments.languagePairLabel ?? Branding.appName
+        case .input:
+            return L.pick("Type to translate", "输入翻译")
         case .idle, .failure:
             return Branding.appName
         }
@@ -222,7 +230,7 @@ struct TranslationResultView: View {
             return !output.result.isEmpty
         case .screenshotSuccess:
             return true
-        case .idle, .screenshotLoading, .failure:
+        case .idle, .input, .screenshotLoading, .failure:
             return false
         }
     }
@@ -285,7 +293,7 @@ struct TranslationResultView: View {
             return output.untranslatable ? .untranslatable : .success
         case .failure:
             return .failure
-        case .idle, .screenshotLoading, .screenshotStreaming:
+        case .idle, .input, .screenshotLoading, .screenshotStreaming:
             return nil
         }
     }
@@ -327,6 +335,8 @@ struct TranslationResultView: View {
                 "Select text, then press the translate hotkey",
                 "选中文字，按下翻译快捷键"
             ))
+        case .input:
+            inputBox
         case .text(let segments):
             textContent(segments, descriptionExpanded: expanded)
         case .screenshotLoading(let message, _, _):
@@ -407,6 +417,62 @@ struct TranslationResultView: View {
             }
             .controlSize(.small)
         }
+    }
+
+    // MARK: - Manual entry
+
+    private var inputBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextEditor(text: $inputText)
+                .font(.system(size: 14))
+                .scrollContentBackground(.hidden)
+                .focused($inputFocused)
+                .frame(minHeight: 56, maxHeight: 160)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .overlay(alignment: .topLeading) {
+                    if inputText.isEmpty {
+                        Text(L.pick("Type or paste text to translate…", "输入或粘贴要翻译的文本…"))
+                            .font(.system(size: 14))
+                            .foregroundStyle(.tertiary)
+                            .padding(.leading, 11)
+                            .padding(.top, 6)
+                            .allowsHitTesting(false)
+                    }
+                }
+                // Return submits; Shift+Return inserts a newline for
+                // multi-paragraph input.
+                .onKeyPress(.return, phases: .down) { press in
+                    if press.modifiers.contains(.shift) { return .ignored }
+                    submitInput()
+                    return .handled
+                }
+            HStack {
+                Text(L.pick("Return to translate · Shift+Return for a new line", "回车翻译 · Shift+回车换行"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button(L.pick("Translate", "翻译")) { submitInput() }
+                    .controlSize(.small)
+                    .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .onAppear {
+            // Focus lands only once the panel is key; defer a turn so the
+            // window has finished ordering front.
+            DispatchQueue.main.async { inputFocused = true }
+        }
+    }
+
+    private func submitInput() {
+        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        inputText = ""
+        onSubmitInput(text)
     }
 
     private func failureBlock(_ error: DisplayError) -> some View {

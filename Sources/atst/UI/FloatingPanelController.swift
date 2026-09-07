@@ -8,6 +8,7 @@ final class FloatingPanelController {
     private let viewModel: TranslatorViewModel
     private let onRefresh: (String) -> Void
     private let onOpenSettings: () -> Void
+    private let onSubmitInput: (String) -> Void
 
     /// Drives the tooltip's max-height constraint so the panel can never
     /// overflow the active screen, and a drag to a position with more
@@ -31,11 +32,13 @@ final class FloatingPanelController {
     init(
         viewModel: TranslatorViewModel,
         onRefresh: @escaping (String) -> Void = { _ in },
-        onOpenSettings: @escaping () -> Void = {}
+        onOpenSettings: @escaping () -> Void = {},
+        onSubmitInput: @escaping (String) -> Void = { _ in }
     ) {
         self.viewModel = viewModel
         self.onRefresh = onRefresh
         self.onOpenSettings = onOpenSettings
+        self.onSubmitInput = onSubmitInput
         spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil,
@@ -107,13 +110,20 @@ final class FloatingPanelController {
         panel.orderOut(nil)
     }
 
-    /// Esc handler fed by the global hotkey tap. The panel is borderless
-    /// and never key, so a local key monitor would never see Esc.
+    /// Esc handler fed by the global hotkey tap. After ⌥D the panel is
+    /// shown without becoming key, so a local key monitor would never see Esc.
     @discardableResult
     func closeIfVisible() -> Bool {
         guard panel.isVisible else { return false }
         close()
         return true
+    }
+
+    /// Manual-entry mode. Unlike the ⌥D tooltip this makes the panel key so
+    /// the editor takes keystrokes.
+    func showInput(anchor: FloatingPanelAnchor) {
+        viewModel.showInput()
+        show(anchor: anchor, activate: true)
     }
 
     // MARK: - Pin handling
@@ -205,7 +215,7 @@ final class FloatingPanelController {
                 smartExplanationEnabled: viewModel.configuration.smartExplanationEnabled,
                 initiallyExpanded: viewModel.configuration.smartExplanationExpandedByDefault
             )
-        case .idle, .screenshotLoading, .failure:
+        case .idle, .input, .screenshotLoading, .failure:
             return nil
         }
     }
@@ -302,6 +312,9 @@ final class FloatingPanelController {
             onOpenSettings: { [weak self] in
                 self?.close()
                 self?.onOpenSettings()
+            },
+            onSubmitInput: { [weak self] text in
+                self?.onSubmitInput(text)
             }
         )
         let controller = NSHostingController(rootView: view)
@@ -452,6 +465,11 @@ enum FloatingPanelAnchor {
 /// follows instantly with a top-left anchor — no AppKit animation clock to
 /// fight against. Result: one driver, smooth drawer feel.
 private final class TooltipPanel: NSPanel {
+    /// Borderless panels refuse key status by default, which would leave the
+    /// manual-entry editor unable to type. Being nonactivating, becoming key
+    /// still doesn't pull focus away from the user's app on ⌥D.
+    override var canBecomeKey: Bool { true }
+
     override func setContentSize(_ newSize: NSSize) {
         let currentFrame = frame
         let topLeftY = currentFrame.maxY

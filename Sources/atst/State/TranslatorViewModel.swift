@@ -218,6 +218,11 @@ final class TranslatorViewModel: ObservableObject {
         state = .failure(DisplayError(error))
     }
 
+    func showInput() {
+        cancelActiveTextTasks()
+        state = .input
+    }
+
     // MARK: - Provider plumbing
 
     /// Build the list of providers we should fan out to, honoring the AI/API
@@ -488,6 +493,9 @@ final class TranslatorViewModel: ObservableObject {
 /// pinned-note logic observe.
 enum TranslationState: Equatable {
     case idle
+    /// Manual-entry mode: the tooltip shows a text editor instead of
+    /// results. Entered from ⌥D with nothing selected or from settings.
+    case input
     /// Text translation in flight or complete. Carries the per-segment
     /// states (API rows + optional AI row). `bothDisabled == true` means
     /// the user has neither AI nor API enabled; the UI renders an empty
@@ -583,7 +591,7 @@ extension TranslationState {
              .screenshotStreaming(_, _, _, let source),
              .screenshotSuccess(_, let source, _):
             return source
-        case .idle, .failure: return ""
+        case .idle, .input, .failure: return ""
         }
     }
 
@@ -605,7 +613,7 @@ extension TranslationState {
         case .screenshotStreaming(_, let output, _, _),
              .screenshotSuccess(let output, _, _):
             return output
-        case .idle, .screenshotLoading, .failure:
+        case .idle, .input, .screenshotLoading, .failure:
             return .empty
         }
     }

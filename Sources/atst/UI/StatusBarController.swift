@@ -6,6 +6,7 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let settingsStore: SettingsStore
     private let updateChecker: UpdateChecker
+    private let onOpenInput: () -> Void
     private let onQuit: () -> Void
 
     private var panel: NSPanel?
@@ -15,10 +16,12 @@ final class StatusBarController: NSObject {
     init(
         settingsStore: SettingsStore,
         updateChecker: UpdateChecker,
+        onOpenInput: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         self.updateChecker = updateChecker
+        self.onOpenInput = onOpenInput
         self.onQuit = onQuit
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
@@ -114,6 +117,10 @@ final class StatusBarController: NSObject {
         let content = MenuBarSettingsView(
             settingsStore: settingsStore,
             updateChecker: updateChecker,
+            onOpenInput: { [weak self] in
+                self?.close()
+                self?.onOpenInput()
+            },
             onQuit: onQuit
         )
         let host = NSHostingController(rootView: content)
