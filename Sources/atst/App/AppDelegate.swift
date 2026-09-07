@@ -43,12 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyMonitor.onEscape = { [weak self] in
             self?.panelController.closeIfVisible() ?? false
         }
-        // Don't prompt for Accessibility at launch — the perm rows in the
-        // settings panel are the canonical surface for grant/manage, and
-        // unsolicited startup dialogs are noisy. We just try to bring up
-        // the tap; if it fails, log and let the user discover the
-        // missing perm via settings.
         ensureHotKeyMonitorRunning()
+        promptForAccessibilityIfNeeded()
         startAccessibilityWatch()
         AppLogger.log("permissions snapshot ax=\(PermissionChecker.isAccessibilityTrusted) screen=\(PermissionChecker.isScreenRecordingTrusted)")
         prewarmAllProviders(settingsStore.configuration)
@@ -394,6 +390,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.translateScreenshot()
             }
         ])
+    }
+
+    /// The hotkey tap can't start without Accessibility, so a fresh install
+    /// would otherwise ignore ⌥D in complete silence. Prompt once per app
+    /// version: ad-hoc signatures change on every build and macOS drops the
+    /// grant with them, so an upgrade needs the nudge again while a user
+    /// who declined isn't nagged on every launch. Settings opens alongside
+    /// so the permission rows are in view.
+    private func promptForAccessibilityIfNeeded() {
+        guard !PermissionChecker.isAccessibilityTrusted else { return }
+        let key = "atst.accessibilityPromptedVersion"
+        let version = Branding.versionDisplay
+        guard UserDefaults.standard.string(forKey: key) != version else { return }
+        UserDefaults.standard.set(version, forKey: key)
+        AppLogger.log("accessibility missing on launch, prompting (version=\(version))")
+        PermissionChecker.requestAccessibility()
+        statusBarController.openSettings()
     }
 
     /// Attempt to bring up the global hotkey tap. Silent — if it fails
