@@ -27,12 +27,19 @@ final class StatusBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            // Plain "atst" text in the menu bar — matches our minimalist
-            // tooltip feel and avoids guessing an icon.
-            button.title = Branding.appName
-            button.image = nil
-            button.imagePosition = .noImage
-            button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+            // Template SF Symbol so the glyph takes the menu bar's tint and
+            // dark-mode treatment like every other status item, and sits in
+            // a square slot instead of a text-width one.
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+            if let image = NSImage(systemSymbolName: "translate", accessibilityDescription: Branding.appName)?
+                .withSymbolConfiguration(symbolConfig) {
+                image.isTemplate = true
+                button.image = image
+                button.imagePosition = .imageOnly
+            } else {
+                button.title = Branding.appName
+                button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+            }
             button.target = self
             button.action = #selector(toggle)
             button.toolTip = Branding.appName
