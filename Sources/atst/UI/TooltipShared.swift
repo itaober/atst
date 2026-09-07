@@ -334,8 +334,8 @@ private final class DragInitiatorView: NSView {
 // MARK: - Speech
 
 /// Tiny `AVSpeechSynthesizer` wrapper used by tooltip footers to pronounce
-/// the source text when the phonetic pill is tapped. Chooses voice locale
-/// by detecting whether the input is pure ASCII.
+/// the source text when the phonetic pill is tapped. Picks a voice whose
+/// language matches the detected language of the text.
 @MainActor
 final class TooltipSpeaker {
     private let synthesizer = AVSpeechSynthesizer()
@@ -345,15 +345,26 @@ final class TooltipSpeaker {
         guard !trimmed.isEmpty else { return }
         synthesizer.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: trimmed)
-        utterance.voice = AVSpeechSynthesisVoice(language: detectLanguage(for: trimmed))
+        utterance.voice = Self.voice(for: trimmed)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.9
         synthesizer.speak(utterance)
     }
 
-    private func detectLanguage(for text: String) -> String {
-        if text.unicodeScalars.contains(where: { $0.value > 0x7F }) {
-            return Locale.current.identifier
+    /// Detected tags look like "en" / "zh-Hans" while installed voices are
+    /// region-tagged ("en-US" / "zh-CN"), so match on the primary subtag
+    /// and let the system default fill in when nothing is installed.
+    private static func voice(for text: String) -> AVSpeechSynthesisVoice? {
+        let detected = LanguageDetector.detect(text) ?? "en"
+        let primary = detected.split(separator: "-").first.map(String.init) ?? detected
+        let preferred: String? = switch detected {
+        case "zh-Hans": "zh-CN"
+        case "zh-Hant": "zh-TW"
+        default: nil
         }
-        return "en-US"
+        if let preferred, let voice = AVSpeechSynthesisVoice(language: preferred) {
+            return voice
+        }
+        return AVSpeechSynthesisVoice.speechVoices()
+            .first { $0.language.hasPrefix(primary + "-") || $0.language == primary }
     }
 }

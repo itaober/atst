@@ -14,6 +14,11 @@ final class GlobalHotKeyMonitor {
     private(set) var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var bindings: [Binding] = []
+    /// Called on a bare Esc keyDown (no modifiers); return true to swallow
+    /// it. The tooltip never becomes key — atst stays inactive after ⌥D so
+    /// the user's app keeps focus — so this tap is the only place that
+    /// sees the keystroke.
+    var onEscape: (() -> Bool)?
     private var isStarted = false
     private var hasLoggedFirstKeyDown = false
 
@@ -110,6 +115,10 @@ final class GlobalHotKeyMonitor {
         if !hasLoggedFirstKeyDown {
             hasLoggedFirstKeyDown = true
             AppLogger.log("CGEventTap first keyDown observed keyCode=\(keyCode) modifiers=\(modifiers)")
+        }
+
+        if keyCode == UInt32(kVK_Escape), modifiers == 0, let onEscape, onEscape() {
+            return nil
         }
 
         for binding in bindings where binding.keyCode == keyCode && binding.modifiers == modifiers {

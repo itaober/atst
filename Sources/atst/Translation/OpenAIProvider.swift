@@ -186,162 +186,212 @@ struct OpenAIProvider: TranslationProvider {
             """)
         }
 
-        sections.append("""
-        示例 1（句子，单义项）：
-        输入："Hello, world."
-        输出：
-        <atst-result>
-          <atst-item>你好，世界。</atst-item>
-        </atst-result>
-
-        示例 1b（多段落，换行与空行逐一对应）：
-        输入：
-        "Install the CLI first.
-
-        - Run `atst --help` to list commands.
-        - Then restart the app."
-        输出：
-        <atst-result>
-          <atst-item>先安装 CLI。
-
-        - 运行 `atst --help` 列出命令。
-        - 然后重启应用。</atst-item>
-        </atst-result>
-        """)
-
-        if includePhonetic || includeDescription {
-            sections.append(buildExampleSection(
-                includePhonetic: includePhonetic,
-                includeDescription: includeDescription
-            ))
-        }
+        sections.append(buildExampleSection(
+            includePhonetic: includePhonetic,
+            includeDescription: includeDescription
+        ))
 
         return sections.joined(separator: "\n\n")
     }
 
-    private func buildExampleSection(
-        includePhonetic: Bool,
-        includeDescription: Bool
-    ) -> String {
-        var examples: [String] = []
+    // MARK: - Few-shot examples
 
-        if includePhonetic && includeDescription {
-            examples.append("""
-            示例 2（普通词 + 音标 + 解释，单义项）：
-            输入："ephemeral"
-            输出：
-            <atst-result>
-              <atst-item>短暂的；瞬息的</atst-item>
-            </atst-result>
-            <atst-phonetic>/ɪˈfemərəl/</atst-phonetic>
-            <atst-desc>**ephemeral** /ɪˈfemərəl/
-
-            - **adj.**：持续时间很短的；转瞬即逝的
-              - Beauty is ephemeral. — 美是短暂的。
-            - **adj.**（生物）：寿命很短的
-              - ephemeral insects — 朝生暮死的昆虫</atst-desc>
-            """)
-            examples.append("""
-            示例 3（多义词）：
-            输入："china"
-            输出：
-            <atst-result>
-              <atst-item>中国</atst-item>
-              <atst-item>瓷器</atst-item>
-            </atst-result>
-            <atst-phonetic>/ˈtʃaɪnə/</atst-phonetic>
-            <atst-desc>**china** /ˈtʃaɪnə/
-
-            - **n.**：中国（大写时常作 China，泛指国家）
-              - I'm going to China next month. — 我下个月去中国。
-            - **n.**：瓷器；瓷土
-              - a set of fine china — 一套精美的瓷器</atst-desc>
-            """)
-            examples.append("""
-            示例 4（专有名词，无翻译）：
-            输入："SwiftUI"
-            输出：
-            <atst-result>
-              <atst-item>SwiftUI</atst-item>
-            </atst-result>
-            <atst-phonetic></atst-phonetic>
-            <atst-desc>**💡 解释**
-
-            SwiftUI 是 Apple 于 2019 年 WWDC 推出的声明式 UI 框架，使用 Swift 语言以数据驱动的描述式语法构建用户界面。它统一了 iOS、macOS、watchOS、tvOS、visionOS 五个平台的开发方式。</atst-desc>
-            <atst-translatable>false</atst-translatable>
-            """)
-            examples.append("""
-            示例 5（拼写错误 / 未识别）：
-            输入："Taober"
-            输出：
-            <atst-result>
-              <atst-item>Taober</atst-item>
-            </atst-result>
-            <atst-phonetic></atst-phonetic>
-            <atst-desc>**未识别**
-
-            该字符串不是一个标准英文词，也不像常见的专有名词。可能是 **Taobao（淘宝）** 的拼写错误？请确认拼写。</atst-desc>
-            <atst-translatable>false</atst-translatable>
-            """)
-        } else if includePhonetic {
-            examples.append("""
-            示例 2（仅音标，单义项）：
-            输入："ephemeral"
-            输出：
-            <atst-result>
-              <atst-item>短暂的；瞬息的</atst-item>
-            </atst-result>
-            <atst-phonetic>/ɪˈfemərəl/</atst-phonetic>
-            """)
-            examples.append("""
-            示例 3（仅音标，多义词）：
-            输入："china"
-            输出：
-            <atst-result>
-              <atst-item>中国</atst-item>
-              <atst-item>瓷器</atst-item>
-            </atst-result>
-            <atst-phonetic>/ˈtʃaɪnə/</atst-phonetic>
-            """)
-        } else if includeDescription {
-            examples.append("""
-            示例 2（句子 + 习语注释）：
-            输入："Rome wasn't built in a day."
-            输出：
-            <atst-result>
-              <atst-item>罗马不是一天建成的。</atst-item>
-            </atst-result>
-            <atst-desc>**📖 含义**：成就大事需要时间和坚持，不能急于求成。出处：英文谚语。</atst-desc>
-            """)
-            examples.append("""
-            示例 3（多义词 + 解释）：
-            输入："bank"
-            输出：
-            <atst-result>
-              <atst-item>银行</atst-item>
-              <atst-item>河岸</atst-item>
-            </atst-result>
-            <atst-desc>**bank**
-
-            - **n.**：金融机构，银行
-              - I work at a bank. — 我在银行工作。
-            - **n.**：河岸；堤岸
-              - We sat on the bank of the river. — 我们坐在河岸上。</atst-desc>
-            """)
-            examples.append("""
-            示例 4（拼写错误 / 未识别）：
-            输入："Taober"
-            输出：
-            <atst-result>
-              <atst-item>Taober</atst-item>
-            </atst-result>
-            <atst-desc>**未识别**：不是标准英文词，也不像常见专有名词。可能是 **Taobao（淘宝）** 的拼写错误。</atst-desc>
-            <atst-translatable>false</atst-translatable>
-            """)
-        }
-
-        return examples.joined(separator: "\n\n")
+    /// One few-shot example. Optional tags are emitted only for the
+    /// sections the current request enables, so one table serves every
+    /// phonetic / explanation toggle combination.
+    private struct PromptExample {
+        var title: String
+        var input: String
+        var items: [String]
+        var phonetic = ""
+        var desc = ""
+        var untranslatable = false
     }
+
+    /// Examples are written for one target language, and the prompt says
+    /// which one it assumes so the model doesn't copy the example language
+    /// when the real target differs. Chinese and English get concrete
+    /// sets; any other target sees the English one.
+    private var examplesAssumeChinese: Bool {
+        (LanguageCode.bcp47(from: configuration.targetLanguage) ?? "zh").hasPrefix("zh")
+    }
+
+    private func buildExampleSection(includePhonetic: Bool, includeDescription: Bool) -> String {
+        let zh = examplesAssumeChinese
+        var picked: [PromptExample] = zh ? Self.zhBasic : Self.enBasic
+        if includeDescription {
+            picked += zh ? Self.zhEnriched : Self.enEnriched
+        } else if includePhonetic {
+            picked += zh ? Self.zhPhoneticOnly : Self.enPhoneticOnly
+        }
+        let note = zh
+            ? "以下示例假设目标语言为中文，仅演示格式；实际输出语言以上方『目标语言』为准。"
+            : "以下示例假设目标语言为 English，仅演示格式；实际输出语言以上方『目标语言』为准。"
+        let rendered = picked.enumerated().map { index, example in
+            render(example, number: index + 1, includePhonetic: includePhonetic, includeDescription: includeDescription)
+        }
+        return ([note] + rendered).joined(separator: "\n\n")
+    }
+
+    private func render(_ ex: PromptExample, number: Int, includePhonetic: Bool, includeDescription: Bool) -> String {
+        var out = "示例 \(number)（\(ex.title)）：\n输入：\"\(ex.input)\"\n输出：\n<atst-result>\n"
+        for item in ex.items { out += "  <atst-item>\(item)</atst-item>\n" }
+        out += "</atst-result>"
+        if includePhonetic { out += "\n<atst-phonetic>\(ex.phonetic)</atst-phonetic>" }
+        if includeDescription { out += "\n<atst-desc>\(ex.desc)</atst-desc>" }
+        if ex.untranslatable { out += "\n<atst-translatable>false</atst-translatable>" }
+        return out
+    }
+
+    // Chinese-target set.
+
+    private static let zhBasic: [PromptExample] = [
+        PromptExample(title: "句子，单义项", input: "Hello, world.", items: ["你好，世界。"]),
+        PromptExample(
+            title: "多段落，换行与空行逐一对应",
+            input: "Install the CLI first.\n\n- Run `atst --help` to list commands.\n- Then restart the app.",
+            items: ["先安装 CLI。\n\n- 运行 `atst --help` 列出命令。\n- 然后重启应用。"]
+        )
+    ]
+
+    private static let zhEphemeral = PromptExample(
+        title: "普通词，单义项",
+        input: "ephemeral",
+        items: ["短暂的；瞬息的"],
+        phonetic: "/ɪˈfemərəl/",
+        desc: """
+        **ephemeral** /ɪˈfemərəl/
+
+        - **adj.**：持续时间很短的；转瞬即逝的
+          - Beauty is ephemeral. — 美是短暂的。
+        - **adj.**（生物）：寿命很短的
+          - ephemeral insects — 朝生暮死的昆虫
+        """
+    )
+
+    private static let zhChina = PromptExample(
+        title: "多义词",
+        input: "china",
+        items: ["中国", "瓷器"],
+        phonetic: "/ˈtʃaɪnə/",
+        desc: """
+        **china** /ˈtʃaɪnə/
+
+        - **n.**：中国（大写时常作 China，泛指国家）
+          - I'm going to China next month. — 我下个月去中国。
+        - **n.**：瓷器；瓷土
+          - a set of fine china — 一套精美的瓷器
+        """
+    )
+
+    private static let zhPhoneticOnly: [PromptExample] = [zhEphemeral, zhChina]
+
+    private static let zhEnriched: [PromptExample] = [
+        zhEphemeral,
+        zhChina,
+        PromptExample(
+            title: "句子 + 习语注释",
+            input: "Rome wasn't built in a day.",
+            items: ["罗马不是一天建成的。"],
+            desc: "**📖 含义**：成就大事需要时间和坚持，不能急于求成。出处：英文谚语。"
+        ),
+        PromptExample(
+            title: "专有名词，无翻译",
+            input: "SwiftUI",
+            items: ["SwiftUI"],
+            desc: """
+            **💡 解释**
+
+            SwiftUI 是 Apple 于 2019 年 WWDC 推出的声明式 UI 框架，使用 Swift 语言以数据驱动的描述式语法构建用户界面。它统一了 iOS、macOS、watchOS、tvOS、visionOS 五个平台的开发方式。
+            """,
+            untranslatable: true
+        ),
+        PromptExample(
+            title: "拼写错误 / 未识别",
+            input: "Taober",
+            items: ["Taober"],
+            desc: """
+            **未识别**
+
+            该字符串不是一个标准英文词，也不像常见的专有名词。可能是 **Taobao（淘宝）** 的拼写错误？请确认拼写。
+            """,
+            untranslatable: true
+        )
+    ]
+
+    // English-target set. Sources are Chinese so the examples never show
+    // an English → English "translation"; IPA stays empty because the
+    // phonetic rule only covers English input.
+
+    private static let enBasic: [PromptExample] = [
+        PromptExample(title: "句子，单义项", input: "你好，世界。", items: ["Hello, world."]),
+        PromptExample(
+            title: "多段落，换行与空行逐一对应",
+            input: "先安装 CLI。\n\n- 运行 `atst --help` 列出命令。\n- 然后重启应用。",
+            items: ["Install the CLI first.\n\n- Run `atst --help` to list commands.\n- Then restart the app."]
+        )
+    ]
+
+    private static let enFleeting = PromptExample(
+        title: "普通词，单义项",
+        input: "转瞬即逝",
+        items: ["fleeting; ephemeral"],
+        desc: """
+        **转瞬即逝**
+
+        - **idiom**: gone in the blink of an eye; extremely short-lived
+          - 青春转瞬即逝。 — Youth is fleeting.
+        """
+    )
+
+    private static let enApple = PromptExample(
+        title: "多义词",
+        input: "苹果",
+        items: ["apple", "Apple (the company)"],
+        desc: """
+        **苹果**
+
+        - **n.**: the fruit
+          - 我每天吃一个苹果。 — I eat an apple every day.
+        - **n.**: Apple Inc., the technology company
+          - 苹果发布了新手机。 — Apple released a new phone.
+        """
+    )
+
+    private static let enPhoneticOnly: [PromptExample] = [enFleeting, enApple]
+
+    private static let enEnriched: [PromptExample] = [
+        enFleeting,
+        enApple,
+        PromptExample(
+            title: "句子 + 习语注释",
+            input: "罗马不是一天建成的。",
+            items: ["Rome wasn't built in a day."],
+            desc: "**📖 Meaning**: great achievements take time and persistence. Origin: English proverb, also common in Chinese."
+        ),
+        PromptExample(
+            title: "专有名词，无翻译",
+            input: "SwiftUI",
+            items: ["SwiftUI"],
+            desc: """
+            **💡 Explanation**
+
+            SwiftUI is Apple's declarative UI framework introduced at WWDC 2019. It builds interfaces from data-driven Swift descriptions and unifies development across iOS, macOS, watchOS, tvOS and visionOS.
+            """,
+            untranslatable: true
+        ),
+        PromptExample(
+            title: "拼写错误 / 未识别",
+            input: "Taober",
+            items: ["Taober"],
+            desc: """
+            **Unrecognised**
+
+            Not a standard word and not a well-known proper noun. Possibly a misspelling of **Taobao**? Please check the spelling.
+            """,
+            untranslatable: true
+        )
+    ]
 
     // MARK: - Lookup heuristics
     //

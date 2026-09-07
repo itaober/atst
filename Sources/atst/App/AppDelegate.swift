@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMainMenu()
         _ = statusBarController
         configureHotKeys(settingsStore.configuration)
+        hotKeyMonitor.onEscape = { [weak self] in
+            self?.panelController.closeIfVisible() ?? false
+        }
         // Don't prompt for Accessibility at launch — the perm rows in the
         // settings panel are the canonical surface for grant/manage, and
         // unsolicited startup dialogs are noisy. We just try to bring up

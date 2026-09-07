@@ -91,24 +91,24 @@ struct GoogleProvider: TranslationProvider {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch let urlError as URLError {
-            throw AppError.aiUnavailable("Google: \(urlError.localizedDescription)")
+            throw AppError.providerUnavailable(name: "Google", detail: "\(urlError.localizedDescription)")
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw AppError.aiRequestFailed("Google returned an unrecognised response")
+            throw AppError.providerRequestFailed(name: "Google", detail: "returned an unrecognised response")
         }
         let latency = Int(Date().timeIntervalSince(started) * 1000)
         AppLogger.log("google translate status=\(http.statusCode) bytes=\(data.count) latencyMs=\(latency) lines=\(payloadLines.count)")
 
         guard (200..<300).contains(http.statusCode) else {
             let bodyPreview = String(data: data.prefix(400), encoding: .utf8) ?? "<binary>"
-            throw AppError.aiRequestFailed("Google HTTP \(http.statusCode): \(bodyPreview)")
+            throw AppError.providerRequestFailed(name: "Google", detail: "HTTP \(http.statusCode): \(bodyPreview)")
         }
 
         // Google returns `&amp;` / `&#39;` etc. regardless of source markup.
         let translatedLines = try parseResponse(data: data).map(HTMLEntityDecoder.decode)
         guard let decoded = batch.merge(translatedLines) else {
-            throw AppError.aiRequestFailed("Google: line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
+            throw AppError.providerRequestFailed(name: "Google", detail: "line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
         }
         guard !decoded.isEmpty else { throw AppError.emptyTranslation }
 
@@ -132,7 +132,7 @@ struct GoogleProvider: TranslationProvider {
     private func parseResponse(data: Data) throws -> [String] {
         let json = try JSONSerialization.jsonObject(with: data, options: [])
         guard let outer = json as? [Any] else {
-            throw AppError.aiRequestFailed("Google: unexpected response shape")
+            throw AppError.providerRequestFailed(name: "Google", detail: "unexpected response shape")
         }
         if let firstArray = outer.first as? [Any] {
             let strings = firstArray.compactMap { $0 as? String }
@@ -143,7 +143,7 @@ struct GoogleProvider: TranslationProvider {
         if let firstString = outer.first as? String {
             return [firstString]
         }
-        throw AppError.aiRequestFailed("Google: unexpected response shape")
+        throw AppError.providerRequestFailed(name: "Google", detail: "unexpected response shape")
     }
 
     /// Heuristic: if the result (case-folded, whitespace-stripped) equals the

@@ -8,6 +8,10 @@ enum AppError: LocalizedError {
     case noScreenshotModelConfigured
     case aiRequestFailed(String)
     case aiUnavailable(String)
+    /// Built-in HTTP translators (Google / Microsoft). `name` is the
+    /// provider's display name so the row copy never says "AI" for them.
+    case providerRequestFailed(name: String, detail: String)
+    case providerUnavailable(name: String, detail: String)
     case emptyTranslation
     case noScreenshotText
     case visionModelLikelyUnsupported(String)
@@ -36,6 +40,10 @@ enum AppError: LocalizedError {
             return L.pick("Can't reach AI service", "AI 服务无法连接")
         case .aiRequestFailed:
             return L.pick("AI request failed", "AI 请求失败")
+        case .providerUnavailable(let name, _):
+            return L.pick("Can't reach \(name)", "\(name) 无法连接")
+        case .providerRequestFailed(let name, _):
+            return L.pick("\(name) request failed", "\(name) 请求失败")
         case .emptyTranslation:
             return L.pick("Model returned no translation", "模型没有返回翻译结果")
         case .noScreenshotText:
@@ -92,6 +100,8 @@ enum AppError: LocalizedError {
                 "请确认 Base URL 可访问，必要时检查 API Key。详情：\(detail)"
             )
         case .aiRequestFailed(let detail):
+            return detail
+        case .providerUnavailable(_, let detail), .providerRequestFailed(_, let detail):
             return detail
         case .emptyTranslation:
             return L.pick(

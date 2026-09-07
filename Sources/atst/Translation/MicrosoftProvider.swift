@@ -77,7 +77,7 @@ struct MicrosoftProvider: TranslationProvider {
         do {
             token = try await MicrosoftAuthToken.shared.token(forceRefresh: forceRefresh)
         } catch {
-            throw AppError.aiUnavailable("Microsoft auth: \(error.localizedDescription)")
+            throw AppError.providerUnavailable(name: "Microsoft", detail: "auth: \(error.localizedDescription)")
         }
 
         var components = URLComponents(string: translateBase)!
@@ -88,7 +88,7 @@ struct MicrosoftProvider: TranslationProvider {
             URLQueryItem(name: "textType", value: "plain")
         ]
         guard let url = components.url else {
-            throw AppError.aiRequestFailed("Microsoft: failed to build URL")
+            throw AppError.providerRequestFailed(name: "Microsoft", detail: "failed to build URL")
         }
 
         // One array entry per non-blank line so the source's line /
@@ -112,10 +112,10 @@ struct MicrosoftProvider: TranslationProvider {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch let urlError as URLError {
-            throw AppError.aiUnavailable("Microsoft: \(urlError.localizedDescription)")
+            throw AppError.providerUnavailable(name: "Microsoft", detail: "\(urlError.localizedDescription)")
         }
         guard let http = response as? HTTPURLResponse else {
-            throw AppError.aiRequestFailed("Microsoft returned an unrecognised response")
+            throw AppError.providerRequestFailed(name: "Microsoft", detail: "returned an unrecognised response")
         }
         let latency = Int(Date().timeIntervalSince(started) * 1000)
         AppLogger.log("microsoft translate status=\(http.statusCode) bytes=\(data.count) latencyMs=\(latency)")
@@ -123,12 +123,12 @@ struct MicrosoftProvider: TranslationProvider {
         if http.statusCode == 401 { throw MicrosoftAuthError.unauthorized }
         guard (200..<300).contains(http.statusCode) else {
             let preview = String(data: data.prefix(400), encoding: .utf8) ?? "<binary>"
-            throw AppError.aiRequestFailed("Microsoft HTTP \(http.statusCode): \(preview)")
+            throw AppError.providerRequestFailed(name: "Microsoft", detail: "HTTP \(http.statusCode): \(preview)")
         }
 
         let translatedLines = try parseResponse(data: data)
         guard let translated = batch.merge(translatedLines) else {
-            throw AppError.aiRequestFailed("Microsoft: line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
+            throw AppError.providerRequestFailed(name: "Microsoft", detail: "line count mismatch (sent \(payloadLines.count), got \(translatedLines.count))")
         }
         guard !translated.isEmpty else { throw AppError.emptyTranslation }
         let untranslatable = looksUntranslatable(source: text, result: translated)
@@ -147,12 +147,12 @@ struct MicrosoftProvider: TranslationProvider {
     private func parseResponse(data: Data) throws -> [String] {
         let json = try JSONSerialization.jsonObject(with: data, options: [])
         guard let array = json as? [[String: Any]] else {
-            throw AppError.aiRequestFailed("Microsoft: unexpected response shape")
+            throw AppError.providerRequestFailed(name: "Microsoft", detail: "unexpected response shape")
         }
         return try array.map { entry in
             guard let translations = entry["translations"] as? [[String: Any]],
                   let text = translations.first?["text"] as? String else {
-                throw AppError.aiRequestFailed("Microsoft: unexpected response shape")
+                throw AppError.providerRequestFailed(name: "Microsoft", detail: "unexpected response shape")
             }
             return text
         }

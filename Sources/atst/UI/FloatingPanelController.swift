@@ -21,7 +21,6 @@ final class FloatingPanelController {
     private var spaceChangeObserver: NSObjectProtocol?
     private var outsideClickGlobalMonitor: Any?
     private var outsideClickLocalMonitor: Any?
-    private var escKeyLocalMonitor: Any?
     private var panelMoveObserver: NSObjectProtocol?
     private var lastAppliedContentSize: NSSize?
 
@@ -106,6 +105,15 @@ final class FloatingPanelController {
         stopPanelMoveObserver()
         viewModel.pinned = false
         panel.orderOut(nil)
+    }
+
+    /// Esc handler fed by the global hotkey tap. The panel is borderless
+    /// and never key, so a local key monitor would never see Esc.
+    @discardableResult
+    func closeIfVisible() -> Bool {
+        guard panel.isVisible else { return false }
+        close()
+        return true
     }
 
     // MARK: - Pin handling
@@ -216,22 +224,14 @@ final class FloatingPanelController {
             self.close()
             return event
         }
-        escKeyLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53, event.window === self?.panel {
-                self?.close()
-                return nil
-            }
-            return event
-        }
     }
 
     private func stopDismissalMonitors() {
-        [outsideClickGlobalMonitor, outsideClickLocalMonitor, escKeyLocalMonitor].forEach {
+        [outsideClickGlobalMonitor, outsideClickLocalMonitor].forEach {
             if let m = $0 { NSEvent.removeMonitor(m) }
         }
         outsideClickGlobalMonitor = nil
         outsideClickLocalMonitor = nil
-        escKeyLocalMonitor = nil
     }
 
     // MARK: - Panel move observer (drag → recompute max content height)
