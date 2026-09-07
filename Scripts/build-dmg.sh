@@ -37,12 +37,18 @@ cp -R "$APP_DIR" "$DMG_STAGING/$APP_NAME.app"
 ln -s /Applications "$DMG_STAGING/Applications"
 
 echo "→ Creating compressed DMG"
-hdiutil create \
-  -volname "$DMG_VOLUME_NAME" \
-  -srcfolder "$DMG_STAGING" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH" >/dev/null
+# `hdiutil create -srcfolder` mounts a temporary volume, copies into it and
+# unmounts. On machines where an indexer or endpoint agent grabs every new
+# volume, that unmount fails with "Resource busy" (49168) — reproducibly,
+# even for a folder holding one text file, and `-nospotlight` doesn't help.
+# `makehybrid` writes the HFS+ image straight from the folder without
+# mounting anything; `convert` then compresses it into the same UDZO
+# format as before. Symlinks (the /Applications shortcut) survive.
+DMG_RAW="$ROOT_DIR/.build/$APP_NAME-raw.dmg"
+rm -f "$DMG_RAW"
+hdiutil makehybrid -hfs -hfs-volume-name "$DMG_VOLUME_NAME" -o "$DMG_RAW" "$DMG_STAGING" >/dev/null
+hdiutil convert "$DMG_RAW" -format UDZO -ov -o "$DMG_PATH" >/dev/null
+rm -f "$DMG_RAW"
 
 rm -rf "$DMG_STAGING"
 
