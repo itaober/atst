@@ -16,9 +16,10 @@ final class FloatingPanelController {
     private let tooltipLayout = TooltipLayout()
 
     private lazy var hostingController: NSHostingController<TranslationResultView> = makeHostingController()
-    private lazy var panel: NSPanel = makePanel()
+    private lazy var panel: TooltipPanel = makePanel()
     private var pinObserver: AnyCancellable?
     private var configObserver: AnyCancellable?
+    private var stateObserver: AnyCancellable?
     private var spaceChangeObserver: NSObjectProtocol?
     private var outsideClickGlobalMonitor: Any?
     private var outsideClickLocalMonitor: Any?
@@ -60,6 +61,13 @@ final class FloatingPanelController {
                 for note in self.noteControllers {
                     note.setFollowsAcrossSpaces(enabled)
                 }
+            }
+        // Key status is only wanted while the editor is up; hand it back the
+        // moment the state moves on so the result renders as a normal tooltip.
+        stateObserver = viewModel.$state
+            .sink { [weak self] state in
+                if case .input = state { return }
+                self?.relinquishKeyStatus()
             }
     }
 
@@ -107,6 +115,7 @@ final class FloatingPanelController {
         stopDismissalMonitors()
         stopPanelMoveObserver()
         viewModel.pinned = false
+        panel.allowsKeyStatus = false
         panel.orderOut(nil)
     }
 
@@ -125,8 +134,21 @@ final class FloatingPanelController {
     /// activation avoids the focus-switch flash.
     func showInput(anchor: FloatingPanelAnchor) {
         viewModel.showInput()
+        panel.allowsKeyStatus = true
         show(anchor: anchor, activate: false)
         panel.makeKeyAndOrderFront(nil)
+    }
+
+    /// A key window renders Liquid Glass in its clear "active" form, so the
+    /// read-only tooltip must not be key. Re-ordering is the sanctioned way
+    /// for a nonactivating panel to give key status back.
+    private func relinquishKeyStatus() {
+        guard panel.allowsKeyStatus else { return }
+        panel.allowsKeyStatus = false
+        if panel.isKeyWindow, panel.isVisible {
+            panel.orderOut(nil)
+            panel.orderFrontRegardless()
+        }
     }
 
     // MARK: - Pin handling
@@ -352,7 +374,7 @@ final class FloatingPanelController {
         }
     }
 
-    private func makePanel() -> NSPanel {
+    private func makePanel() -> TooltipPanel {
         let panel = TooltipPanel(
             contentRect: NSRect(x: 0, y: 0, width: 280, height: 80),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -468,10 +490,12 @@ enum FloatingPanelAnchor {
 /// follows instantly with a top-left anchor — no AppKit animation clock to
 /// fight against. Result: one driver, smooth drawer feel.
 private final class TooltipPanel: NSPanel {
-    /// Borderless panels refuse key status by default, which would leave the
-    /// manual-entry editor unable to type. Being nonactivating, becoming key
-    /// still doesn't pull focus away from the user's app on ⌥D.
-    override var canBecomeKey: Bool { true }
+    /// Key status is granted only while the manual-input editor needs to
+    /// type. Everywhere else the panel stays non-key: a key window renders
+    /// Liquid Glass in its clear "active" form, and clicking the header to
+    /// drag would otherwise flip the tooltip into that look.
+    var allowsKeyStatus = false
+    override var canBecomeKey: Bool { allowsKeyStatus }
 
     override func setContentSize(_ newSize: NSSize) {
         let currentFrame = frame

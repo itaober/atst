@@ -13,9 +13,19 @@ enum LanguageDetector {
         let confidence: Double
     }
 
+    /// Languages the recognizer may answer with — the same set as
+    /// `TargetLanguagePreset`. Unconstrained, single Latin-alphabet words
+    /// land on random languages ("Chromium" → Polish, "SwiftUI" →
+    /// Indonesian); within this set they resolve to English.
+    private static let constraints: [NLLanguage] = [
+        .english, .simplifiedChinese, .traditionalChinese, .japanese, .korean,
+        .french, .german, .spanish, .italian, .portuguese, .russian
+    ]
+
     /// Dominant language of `text`, or nil when the recognizer can't decide.
     static func detect(_ text: String) -> Detection? {
         let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = constraints
         recognizer.processString(text)
         guard let language = recognizer.dominantLanguage, language != .undetermined else { return nil }
         let confidence = recognizer.languageHypotheses(withMaximum: 1)[language] ?? 0
