@@ -146,13 +146,6 @@ struct OpenAICompatibleClient {
 
         return request
     }
-
-    private func decodeErrorMessage(from data: Data) -> String? {
-        if let response = try? JSONDecoder().decode(ChatErrorResponse.self, from: data) {
-            return response.error.message
-        }
-        return String(data: data, encoding: .utf8)
-    }
 }
 
 struct ChatMessage: Encodable {
@@ -228,12 +221,4 @@ private struct ChatStreamChoice: Decodable {
 
 private struct ChatStreamDelta: Decodable {
     var content: String?
-}
-
-private struct ChatErrorResponse: Decodable {
-    var error: ChatError
-}
-
-private struct ChatError: Decodable {
-    var message: String
 }

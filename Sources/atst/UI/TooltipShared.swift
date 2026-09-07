@@ -38,7 +38,7 @@ struct VisualEffectBackground: NSViewRepresentable {
 /// On macOS 26+ with a Swift 6.2+ toolchain this uses native Liquid Glass.
 /// Older compilers or runtime OS versions keep the established AppKit
 /// `NSVisualEffectView` material, so the package still builds and runs on
-/// macOS 13+.
+/// macOS 14+.
 struct AdaptiveGlassSurface: ViewModifier {
     enum Border {
         case none

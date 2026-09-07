@@ -38,8 +38,6 @@ struct PinnedNoteView: View {
     var onClose: () -> Void
 
     @State private var descriptionExpanded: Bool
-    @State private var copyFeedbackKey: String? = nil
-    @State private var copyResetTask: Task<Void, Never>?
 
     private let cornerRadius: CGFloat = 10
     private let speaker = TooltipSpeaker()
@@ -54,9 +52,7 @@ struct PinnedNoteView: View {
         VStack(alignment: .leading, spacing: 6) {
             header
             if !snapshot.apiSegments.isEmpty {
-                PinnedAPIBlock(segments: snapshot.apiSegments, copyFeedbackKey: $copyFeedbackKey) { key in
-                    triggerCopyFeedback(for: key)
-                }
+                APISegmentsBlock(segments: snapshot.apiSegments, isSnapshot: true)
             }
             if !snapshot.apiSegments.isEmpty && snapshot.aiSegment != nil {
                 Divider().padding(.vertical, 1)
@@ -68,8 +64,6 @@ struct PinnedNoteView: View {
                     phoneticEnabled: snapshot.phoneticEnabled,
                     smartExplanationEnabled: snapshot.smartExplanationEnabled,
                     sourceText: snapshot.sourceText,
-                    copyFeedbackKey: $copyFeedbackKey,
-                    onCopyFeedback: { triggerCopyFeedback(for: $0) },
                     onSpeak: { speaker.speak($0) }
                 )
             }
@@ -114,123 +108,6 @@ struct PinnedNoteView: View {
             .help(L.pick("Close", "关闭"))
         }
     }
-
-    private func triggerCopyFeedback(for key: String) {
-        copyResetTask?.cancel()
-        copyFeedbackKey = key
-        copyResetTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            if !Task.isCancelled { copyFeedbackKey = nil }
-        }
-    }
-}
-
-// MARK: - API segments in pinned notes
-
-private struct PinnedAPIBlock: View {
-    let segments: [ProviderSegment]
-    @Binding var copyFeedbackKey: String?
-    let onCopyFeedback: (String) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(segments) { segment in
-                PinnedAPIRow(
-                    segment: segment,
-                    copyFeedbackKey: $copyFeedbackKey,
-                    onCopyFeedback: onCopyFeedback
-                )
-            }
-        }
-    }
-}
-
-private struct PinnedAPIRow: View {
-    let segment: ProviderSegment
-    @Binding var copyFeedbackKey: String?
-    let onCopyFeedback: (String) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(segment.displayName)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
-            content
-        }
-        .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch segment.state {
-        case .success(let output, _, _, _):
-            successRows(output)
-        case .failure(let error):
-            HStack(alignment: .top, spacing: 7) {
-                Text(error.title)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(error.message ?? error.title)
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.red.opacity(0.8))
-                    .frame(width: 20, height: 20)
-            }
-        case .loading, .streaming:
-            Text(L.pick("(no result)", "（无结果）"))
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    /// Multi-item rendering ready for any future provider that returns
-    /// multiple meanings (Google / Microsoft built-ins currently always
-    /// emit a single item, so this naturally renders as one row).
-    @ViewBuilder
-    private func successRows(_ output: TranslationOutput) -> some View {
-        let items = output.items.isEmpty ? [output.result] : output.items
-        if items.count <= 1 {
-            row(text: items[0], copyKey: "pinned.api.\(segment.id.rawValue).single", showBullet: false)
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(items.enumerated()), id: \.offset) { offset, item in
-                    row(text: item, copyKey: "pinned.api.\(segment.id.rawValue).\(offset)", showBullet: true)
-                }
-            }
-        }
-    }
-
-    private func row(text: String, copyKey: String, showBullet: Bool) -> some View {
-        HStack(alignment: .top, spacing: 7) {
-            if showBullet {
-                Text("•")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-            Text(text)
-                .font(.system(size: 13))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            let copied = copyFeedbackKey == copyKey
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                onCopyFeedback(copyKey)
-            } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(copied ? Color.green : .secondary)
-            .help(copied ? L.pick("Copied", "已复制") : L.pick("Copy this", "复制这一条"))
-        }
-    }
 }
 
 // MARK: - AI segment in pinned notes
@@ -241,8 +118,6 @@ private struct PinnedAISegmentBlock: View {
     let phoneticEnabled: Bool
     let smartExplanationEnabled: Bool
     let sourceText: String
-    @Binding var copyFeedbackKey: String?
-    let onCopyFeedback: (String) -> Void
     let onSpeak: (String) -> Void
 
     var body: some View {
@@ -291,8 +166,6 @@ private struct PinnedAISegmentBlock: View {
     private func translationItems(_ output: TranslationOutput) -> some View {
         if output.items.count <= 1 {
             let text = output.items.first ?? output.result
-            let key = "pinned.ai.single"
-            let copied = copyFeedbackKey == key
             HStack(alignment: .top, spacing: 7) {
                 Text(text)
                     .font(.system(size: 14))
@@ -300,25 +173,11 @@ private struct PinnedAISegmentBlock: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(text, forType: .string)
-                    onCopyFeedback(key)
-                } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10, weight: .semibold))
-                        .frame(width: 20, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(copied ? Color.green : .secondary)
-                .help(copied ? L.pick("Copied", "已复制") : L.pick("Copy translation", "复制译文"))
+                CopyButton(text: text, tooltip: L.pick("Copy translation", "复制译文"))
             }
         } else {
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(output.items.enumerated()), id: \.offset) { offset, item in
-                    let key = "pinned.ai.multi.\(offset)"
-                    let copied = copyFeedbackKey == key
+                ForEach(Array(output.items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .top, spacing: 7) {
                         Text("•")
                             .font(.system(size: 13))
@@ -329,19 +188,7 @@ private struct PinnedAISegmentBlock: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(item, forType: .string)
-                            onCopyFeedback(key)
-                        } label: {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 10, weight: .semibold))
-                                .frame(width: 20, height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(copied ? Color.green : .secondary)
-                        .help(copied ? L.pick("Copied", "已复制") : L.pick("Copy this", "复制这一条"))
+                        CopyButton(text: item)
                     }
                     .padding(.vertical, 1)
                 }

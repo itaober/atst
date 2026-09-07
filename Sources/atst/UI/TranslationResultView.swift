@@ -338,9 +338,9 @@ struct TranslationResultView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         case .screenshotStreaming(_, let output, _, _):
-            translationItems(output, isStreaming: true, copyKeyPrefix: "screenshot")
+            translationItems(output, isStreaming: true)
         case .screenshotSuccess(let output, _, _):
-            translationItems(output, isStreaming: false, copyKeyPrefix: "screenshot")
+            translationItems(output, isStreaming: false)
         case .failure(let error):
             failureBlock(error)
         }
@@ -434,26 +434,23 @@ struct TranslationResultView: View {
     // MARK: - Screenshot translation rendering
 
     @ViewBuilder
-    private func translationItems(_ output: TranslationOutput, isStreaming: Bool, copyKeyPrefix: String) -> some View {
+    private func translationItems(_ output: TranslationOutput, isStreaming: Bool) -> some View {
         let items = output.items
         if items.isEmpty {
             placeholderText(isStreaming ? L.pick("Translating…", "翻译中…") : "")
         } else if items.count == 1 {
-            singleMeaningRow(items[0], isStreaming: isStreaming, copyKey: "\(copyKeyPrefix).single")
+            singleMeaningRow(items[0], isStreaming: isStreaming)
         } else {
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(items.enumerated()), id: \.offset) { offset, item in
-                    multiMeaningRow(item, copyKey: "\(copyKeyPrefix).\(offset)")
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    multiMeaningRow(item)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    @State private var copyFeedbackKey: String? = nil
-    @State private var copyResetTask: Task<Void, Never>?
-
-    private func singleMeaningRow(_ text: String, isStreaming: Bool, copyKey: String) -> some View {
+    private func singleMeaningRow(_ text: String, isStreaming: Bool) -> some View {
         let isPlaceholder = text.isEmpty && isStreaming
         let displayText = isPlaceholder ? L.pick("Translating…", "翻译中…") : text
         return HStack(alignment: .top, spacing: 7) {
@@ -464,12 +461,12 @@ struct TranslationResultView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if !isPlaceholder {
-                copyButton(text: text, key: copyKey, tooltip: L.pick("Copy translation", "复制译文"))
+                CopyButton(text: text, tooltip: L.pick("Copy translation", "复制译文"))
             }
         }
     }
 
-    private func multiMeaningRow(_ text: String, copyKey: String) -> some View {
+    private func multiMeaningRow(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 7) {
             Text("•")
                 .font(.system(size: 13, weight: .regular))
@@ -480,25 +477,9 @@ struct TranslationResultView: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            copyButton(text: text, key: copyKey, tooltip: L.pick("Copy this", "复制这一条"))
+            CopyButton(text: text)
         }
         .padding(.vertical, 1)
-    }
-
-    private func copyButton(text: String, key: String, tooltip: String) -> some View {
-        let copied = copyFeedbackKey == key
-        return Button {
-            copyToPasteboard(text)
-            triggerCopyFeedback(for: key)
-        } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 10, weight: .semibold))
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(copied ? Color.green : .secondary)
-        .help(copied ? L.pick("Copied", "已复制") : tooltip)
     }
 
     private func placeholderText(_ text: String) -> some View {
@@ -515,21 +496,6 @@ struct TranslationResultView: View {
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func copyToPasteboard(_ text: String) {
-        guard !text.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
-
-    private func triggerCopyFeedback(for key: String) {
-        copyResetTask?.cancel()
-        copyFeedbackKey = key
-        copyResetTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            if !Task.isCancelled { copyFeedbackKey = nil }
-        }
     }
 
     // MARK: - Auto-expand bookkeeping
@@ -575,141 +541,6 @@ struct TranslationResultView: View {
     }
 }
 
-// MARK: - API segments block
-
-/// Renders the stacked API rows above the AI block. Every row carries its
-/// own copy button and failure UI.
-private struct APISegmentsBlock: View {
-    let segments: [ProviderSegment]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(segments) { segment in
-                APISegmentRow(segment: segment)
-            }
-        }
-    }
-}
-
-private struct APISegmentRow: View {
-    let segment: ProviderSegment
-    @State private var copyFeedbackKey: String? = nil
-    @State private var copyResetTask: Task<Void, Never>?
-
-    var body: some View {
-        // Provider name sits as a small label *above* the translation row(s).
-        // The translation row owns the trailing copy button so the icon
-        // aligns with the text it copies — not with the label up top.
-        VStack(alignment: .leading, spacing: 2) {
-            Text(segment.displayName)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.tertiary)
-            content
-        }
-        .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch segment.state {
-        case .loading:
-            loadingRow
-        case .streaming(_, let output):
-            if output.result.isEmpty {
-                loadingRow
-            } else {
-                successRows(output)
-            }
-        case .success(let output, _, _, _):
-            successRows(output)
-        case .failure(let error):
-            HStack(alignment: .top, spacing: 7) {
-                Text(error.title)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.red.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(error.message ?? error.title)
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.red.opacity(0.8))
-                    .frame(width: 20, height: 20)
-            }
-        }
-    }
-
-    private var loadingRow: some View {
-        HStack {
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.7)
-                .frame(height: 14)
-            Spacer()
-        }
-    }
-
-    /// Render successful output as one or more rows. Current built-in
-    /// providers (Google, Microsoft) always return a single string per
-    /// request, but the multi-row path is here for any future provider
-    /// (custom HTTP / DeepL alternates / dictionary-flavoured API) that
-    /// might return several meanings — that case should look identical to
-    /// the AI multi-meaning section.
-    @ViewBuilder
-    private func successRows(_ output: TranslationOutput) -> some View {
-        let items = output.items.isEmpty ? [output.result] : output.items
-        if items.count <= 1 {
-            translationRow(text: items[0], copyKey: "api.\(segment.id.rawValue).single", showBullet: false)
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(items.enumerated()), id: \.offset) { offset, item in
-                    translationRow(text: item, copyKey: "api.\(segment.id.rawValue).\(offset)", showBullet: true)
-                }
-            }
-        }
-    }
-
-    private func translationRow(text: String, copyKey: String, showBullet: Bool) -> some View {
-        HStack(alignment: .top, spacing: 7) {
-            if showBullet {
-                Text("•")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.secondary)
-            }
-            Text(text)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            copyButton(text: text, key: copyKey)
-        }
-    }
-
-    private func copyButton(text: String, key: String) -> some View {
-        let copied = copyFeedbackKey == key
-        return Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            copyResetTask?.cancel()
-            copyFeedbackKey = key
-            copyResetTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                if !Task.isCancelled { copyFeedbackKey = nil }
-            }
-        } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 10, weight: .semibold))
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(copied ? Color.green : .secondary)
-        .help(copied
-              ? L.pick("Copied", "已复制")
-              : L.pick("Copy this", "复制这一条"))
-    }
-}
-
 // MARK: - AI segment block
 
 private struct AISegmentBlock: View {
@@ -720,8 +551,6 @@ private struct AISegmentBlock: View {
     let smartExplanationEnabled: Bool
     let sourceText: String
 
-    @State private var copyFeedbackKey: String? = nil
-    @State private var copyResetTask: Task<Void, Never>?
     private let speaker = TooltipSpeaker()
 
     var body: some View {
@@ -808,8 +637,8 @@ private struct AISegmentBlock: View {
             singleMeaningRow(items[0], isStreaming: isStreaming)
         } else {
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(items.enumerated()), id: \.offset) { offset, item in
-                    multiMeaningRow(item, copyKey: "ai.multi.\(offset)")
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    multiMeaningRow(item)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -817,7 +646,6 @@ private struct AISegmentBlock: View {
     }
 
     private func singleMeaningRow(_ text: String, isStreaming: Bool) -> some View {
-        let key = "ai.single"
         let isPlaceholder = text.isEmpty && isStreaming
         return HStack(alignment: .top, spacing: 7) {
             if isPlaceholder {
@@ -832,12 +660,12 @@ private struct AISegmentBlock: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                copyButton(text: text, key: key, tooltip: L.pick("Copy translation", "复制译文"))
+                CopyButton(text: text, tooltip: L.pick("Copy translation", "复制译文"))
             }
         }
     }
 
-    private func multiMeaningRow(_ text: String, copyKey: String) -> some View {
+    private func multiMeaningRow(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 7) {
             Text("•")
                 .font(.system(size: 13, weight: .regular))
@@ -848,31 +676,9 @@ private struct AISegmentBlock: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            copyButton(text: text, key: copyKey, tooltip: L.pick("Copy this", "复制这一条"))
+            CopyButton(text: text)
         }
         .padding(.vertical, 1)
-    }
-
-    private func copyButton(text: String, key: String, tooltip: String) -> some View {
-        let copied = copyFeedbackKey == key
-        return Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            copyResetTask?.cancel()
-            copyFeedbackKey = key
-            copyResetTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                if !Task.isCancelled { copyFeedbackKey = nil }
-            }
-        } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 10, weight: .semibold))
-                .frame(width: 20, height: 20)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(copied ? Color.green : .secondary)
-        .help(copied ? L.pick("Copied", "已复制") : tooltip)
     }
 
     private func placeholderText(_ text: String) -> some View {
