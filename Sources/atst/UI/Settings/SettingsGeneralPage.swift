@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import ServiceManagement
 import SwiftUI
 
 private enum ShortcutTarget: Equatable {
@@ -417,6 +418,8 @@ struct SettingsGeneralPage: View {
             Divider().padding(.horizontal, 10)
             appearanceRow
             Divider().padding(.horizontal, 10)
+            launchAtLoginRow
+            Divider().padding(.horizontal, 10)
             pinnedNoteFollowsRow
         }
     }
@@ -609,34 +612,36 @@ struct SettingsGeneralPage: View {
     }
 
     private var pinnedNoteFollowsRow: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L.pick("Notes on all desktops", "便签跨桌面显示"))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary)
-                Text(L.pick(
-                    "Keep pinned notes visible after switching Space",
-                    "切换桌面后便签依然可见"
-                ))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                Toggle("", isOn: $draft.pinnedNoteFollowsAcrossSpaces)
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
-                    .fixedSize()
-                    .onChange(of: draft.pinnedNoteFollowsAcrossSpaces) { _ in
-                        save()
-                    }
-            }
-            .frame(width: generalControlWidth, alignment: .trailing)
+        SettingsToggleRow(
+            title: L.pick("Notes on all desktops", "便签跨桌面显示"),
+            subtitle: L.pick(
+                "Keep pinned notes visible after switching Space",
+                "切换桌面后便签依然可见"
+            ),
+            isOn: $draft.pinnedNoteFollowsAcrossSpaces,
+            onChange: save
+        )
+    }
+
+    private var launchAtLoginRow: some View {
+        SettingsToggleRow(
+            title: L.pick("Launch at login", "登录时自动启动"),
+            subtitle: launchAtLoginSubtitle,
+            isOn: $draft.launchAtLogin,
+            onChange: save
+        )
+    }
+
+    /// After `register()` macOS may park the item in `.requiresApproval`
+    /// and wait for the user to flip it on in Login Items themselves.
+    private var launchAtLoginSubtitle: String {
+        if draft.launchAtLogin, SMAppService.mainApp.status == .requiresApproval {
+            return L.pick(
+                "Approve atst under System Settings → General → Login Items",
+                "请在 系统设置 → 通用 → 登录项 中批准 atst"
+            )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        return L.pick("Start atst in the menu bar when you log in", "登录后自动在菜单栏启动")
     }
 
     // MARK: - Hotkey recording

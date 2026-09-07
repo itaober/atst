@@ -83,6 +83,9 @@ struct AppConfiguration: Codable, Equatable {
     /// pin a note in the context of one desktop and expect it to stay
     /// there. Opt-in for the "follow me everywhere" workflow.
     var pinnedNoteFollowsAcrossSpaces: Bool
+    /// Registers the app as a login item via `SMAppService`. Only takes
+    /// effect from a bundled .app — `swift run` builds log and skip.
+    var launchAtLogin: Bool
 
     static let defaultAPIProviders: [APIProviderEntry] = [
         .init(kind: .google, enabled: true),
@@ -125,7 +128,8 @@ struct AppConfiguration: Codable, Equatable {
         screenshotHotKey: .defaultScreenshot,
         screenshotUseVisionOCR: true,
         ocrLanguages: defaultOCRLanguages,
-        pinnedNoteFollowsAcrossSpaces: false
+        pinnedNoteFollowsAcrossSpaces: false,
+        launchAtLogin: false
     )
 
     static let storageKey = "atst.configuration.v1"
@@ -155,7 +159,8 @@ struct AppConfiguration: Codable, Equatable {
         screenshotHotKey: KeyboardShortcutConfig = .defaultScreenshot,
         screenshotUseVisionOCR: Bool = true,
         ocrLanguages: [String] = AppConfiguration.defaultOCRLanguages,
-        pinnedNoteFollowsAcrossSpaces: Bool = false
+        pinnedNoteFollowsAcrossSpaces: Bool = false,
+        launchAtLogin: Bool = false
     ) {
         self.aiEnabled = aiEnabled
         self.apiEnabled = apiEnabled
@@ -182,6 +187,7 @@ struct AppConfiguration: Codable, Equatable {
         self.screenshotUseVisionOCR = screenshotUseVisionOCR
         self.ocrLanguages = ocrLanguages
         self.pinnedNoteFollowsAcrossSpaces = pinnedNoteFollowsAcrossSpaces
+        self.launchAtLogin = launchAtLogin
     }
 
     init(from decoder: Decoder) throws {
@@ -228,6 +234,7 @@ struct AppConfiguration: Codable, Equatable {
             ocrLanguages = defaults.ocrLanguages
         }
         pinnedNoteFollowsAcrossSpaces = try container.decodeIfPresent(Bool.self, forKey: .pinnedNoteFollowsAcrossSpaces) ?? defaults.pinnedNoteFollowsAcrossSpaces
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
     }
 
     var chatCompletionsURL: URL? {

@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import ServiceManagement
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -53,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         prewarmAllProviders(settingsStore.configuration)
         startPrewarmTimer()
         applyCacheSettings(settingsStore.configuration)
+        applyLaunchAtLogin(settingsStore.configuration.launchAtLogin)
         // Fire-and-forget update probe. The checker rate-limits itself
         // (4-hour TTL), so calling on every launch is cheap.
         updateChecker.checkInBackground()
@@ -65,9 +67,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.ensureHotKeyMonitorRunning()
                 self?.applyAppearance(configuration.appearanceMode)
                 self?.applyCacheSettings(configuration)
+                self?.applyLaunchAtLogin(configuration.launchAtLogin)
                 self?.prewarmAllProviders(configuration)
             }
             .store(in: &cancellables)
+    }
+
+    /// Sync the login-item registration with the setting. Idempotent: only
+    /// touches SMAppService when the desired state differs from the current
+    /// one, so every unrelated settings save doesn't hit the service.
+    private func applyLaunchAtLogin(_ enabled: Bool) {
+        let service = SMAppService.mainApp
+        let registered = service.status == .enabled || service.status == .requiresApproval
+        guard enabled != registered else { return }
+        do {
+            if enabled {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+            AppLogger.log("launch at login \(enabled ? "registered" : "unregistered") status=\(service.status.rawValue)")
+        } catch {
+            // Expected for `swift run` builds (no bundle to register).
+            AppLogger.log("launch at login \(enabled ? "register" : "unregister") failed: \(error)")
+        }
     }
 
     private func applyCacheSettings(_ configuration: AppConfiguration) {
