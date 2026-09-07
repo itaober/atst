@@ -388,7 +388,6 @@ struct SettingsGeneralPage: View {
                 title: L.pick("Selection translation", "划词翻译"),
                 requirement: L.pick("Accessibility", "辅助功能"),
                 granted: accessibilityTrusted,
-                refresh: refreshPermissionStatus,
                 openSettings: PermissionChecker.openAccessibilitySettings
             )
             Divider().padding(.horizontal, 10)
@@ -396,7 +395,6 @@ struct SettingsGeneralPage: View {
                 title: L.pick("Screenshot translation", "截图翻译"),
                 requirement: L.pick("Screen recording", "屏幕录制"),
                 granted: screenRecordingTrusted,
-                refresh: refreshPermissionStatus,
                 openSettings: PermissionChecker.openScreenRecordingSettings
             )
         }
@@ -411,8 +409,6 @@ struct SettingsGeneralPage: View {
             targetLanguageRow
             Divider().padding(.horizontal, 10)
             secondaryTargetLanguageRow
-            Divider().padding(.horizontal, 10)
-            timeoutRow
             Divider().padding(.horizontal, 10)
             uiLanguageRow
             Divider().padding(.horizontal, 10)
@@ -494,33 +490,6 @@ struct SettingsGeneralPage: View {
                 .onChange(of: selection.wrappedValue) { _ in
                     save()
                 }
-            }
-            .frame(width: generalControlWidth, alignment: .trailing)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-    }
-
-    /// Inline numeric timeout. The text field sits inside a fixed-width
-    /// container aligned to the same right edge as the other General
-    /// controls; the "秒 / s" unit sits to its right, breaking the rigid
-    /// alignment slightly but staying readable.
-    private var timeoutRow: some View {
-        HStack(spacing: 10) {
-            Text(L.pick("Timeout", "超时"))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-            Spacer(minLength: 8)
-            HStack(spacing: 6) {
-                TextField("10", value: $draft.timeoutSeconds, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 60)
-                    .onChange(of: draft.timeoutSeconds) { _ in debouncedSave() }
-                Text(L.pick("s", "秒"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
             .frame(width: generalControlWidth, alignment: .trailing)
         }

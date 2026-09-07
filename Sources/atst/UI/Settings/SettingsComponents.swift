@@ -91,13 +91,12 @@ struct SettingsNavRow: View {
 }
 
 /// Permission status row (Accessibility / Screen Recording). Shows a
-/// coloured dot + free-form requirement label and exposes a refresh and
-/// open-system-settings button.
+/// coloured dot + free-form requirement label and an open-system-settings
+/// button. Status is polled by the page, so there's no manual refresh.
 struct SettingsPermissionRow: View {
     let title: String
     let requirement: String
     let granted: Bool
-    var refresh: () -> Void
     var openSettings: () -> Void
 
     var body: some View {
@@ -119,15 +118,6 @@ struct SettingsPermissionRow: View {
                 }
             }
             Spacer(minLength: 4)
-            Button(action: refresh) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: 20, height: 20)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help(L.pick("Refresh permission status", "刷新权限状态"))
-
             Button(action: openSettings) {
                 Image(systemName: "gear")
                     .font(.system(size: 11, weight: .semibold))

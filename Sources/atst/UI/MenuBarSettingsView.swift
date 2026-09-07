@@ -252,6 +252,10 @@ struct MenuBarSettingsView: View {
                 resetToDefaults()
             }
             .controlSize(.small)
+            .help(L.pick(
+                "Reset every setting except the AI endpoint, key and models",
+                "恢复全部默认设置；保留 AI 接口地址、Key 和模型"
+            ))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -284,22 +288,15 @@ struct MenuBarSettingsView: View {
         }
     }
 
+    /// Everything back to defaults except the AI endpoint (URL, key, models)
+    /// — re-typing those is the one thing a reset must never cost the user.
     private func resetToDefaults() {
-        let defaults = AppConfiguration.defaultConfig
-        draft.systemPrompt = defaults.systemPrompt
-        draft.smartExplanationPrompt = defaults.smartExplanationPrompt
-        draft.textHotKey = .defaultText
-        draft.screenshotHotKey = .defaultScreenshot
-        draft.aiEnabled = defaults.aiEnabled
-        draft.apiEnabled = defaults.apiEnabled
-        draft.apiProviders = defaults.apiProviders
-        draft.screenshotUseVisionOCR = defaults.screenshotUseVisionOCR
-        draft.ocrLanguages = defaults.ocrLanguages
-        draft.uiLanguage = defaults.uiLanguage
-        draft.targetLanguage = defaults.targetLanguage
-        draft.secondaryTargetLanguage = defaults.secondaryTargetLanguage
-        draft.launchAtLogin = defaults.launchAtLogin
-        draft.timeoutSeconds = defaults.timeoutSeconds
+        var defaults = AppConfiguration.defaultConfig
+        defaults.baseURL = draft.baseURL
+        defaults.apiKey = draft.apiKey
+        defaults.textModel = draft.textModel
+        defaults.screenshotModel = draft.screenshotModel
+        draft = defaults
         save()
     }
 }

@@ -64,7 +64,35 @@ struct SettingsAIPage: View {
                 placeholder: "vision model",
                 onChange: debouncedSave
             )
+            timeoutRow
         }
+    }
+
+    /// Only the AI request honours this; Google / Microsoft use a fixed
+    /// 15 s, which is why the row lives here and not in General.
+    private var timeoutRow: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(L.pick("Timeout", "超时"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Text(L.pick("Idle limit per AI request", "单次 AI 请求的空闲等待上限"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            TextField("10", value: $draft.timeoutSeconds, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 60)
+                .onChange(of: draft.timeoutSeconds) { _ in debouncedSave() }
+            Text(L.pick("s", "秒"))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
     }
 
     private var promptsSection: some View {
