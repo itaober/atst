@@ -207,8 +207,8 @@ struct TranslationResultView: View {
              .screenshotStreaming(_, _, let model, _),
              .screenshotSuccess(_, _, let model):
             return model.isEmpty ? Branding.appName : model
-        case .text:
-            return Branding.appName
+        case .text(let segments):
+            return segments.languagePairLabel ?? Branding.appName
         case .idle, .failure:
             return Branding.appName
         }

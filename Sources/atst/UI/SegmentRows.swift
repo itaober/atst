@@ -47,14 +47,43 @@ struct APISegmentsBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(segments) { segment in
-                APISegmentRow(segment: segment, isSnapshot: isSnapshot)
+            ForEach(mergedRows, id: \.id) { row in
+                APISegmentRow(title: row.title, segment: row.segment, isSnapshot: isSnapshot)
             }
         }
+    }
+
+    private struct Row {
+        var id: String
+        var title: String
+        var segment: ProviderSegment
+    }
+
+    /// Providers that returned the same text collapse into one row titled
+    /// "Google · Microsoft" — two identical lines told the user nothing and
+    /// cost a row of tooltip height. Only successes merge; pending and
+    /// failed segments always keep their own row.
+    private var mergedRows: [Row] {
+        var rows: [Row] = []
+        var rowIndexByResult: [String: Int] = [:]
+        for segment in segments {
+            if case .success(let output, _, _, _) = segment.state {
+                let key = output.result.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let index = rowIndexByResult[key] {
+                    rows[index].title += " · " + segment.displayName
+                    rows[index].id += "+" + segment.id.rawValue
+                    continue
+                }
+                rowIndexByResult[key] = rows.count
+            }
+            rows.append(Row(id: segment.id.rawValue, title: segment.displayName, segment: segment))
+        }
+        return rows
     }
 }
 
 private struct APISegmentRow: View {
+    let title: String
     let segment: ProviderSegment
     let isSnapshot: Bool
 
@@ -63,7 +92,7 @@ private struct APISegmentRow: View {
         // The translation row owns the trailing copy button so the icon
         // aligns with the text it copies — not with the label up top.
         VStack(alignment: .leading, spacing: 2) {
-            Text(segment.displayName)
+            Text(title)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundStyle(.tertiary)
             content

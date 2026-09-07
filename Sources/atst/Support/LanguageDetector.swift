@@ -20,4 +20,19 @@ enum LanguageDetector {
         }
         return language.rawValue
     }
+
+    /// Primary language subtag: "zh-Hant" → "zh". The recognizer's
+    /// Simplified / Traditional split is unreliable on short text, so
+    /// comparisons and labels work at the language level.
+    static func primary(_ code: String) -> String {
+        code.split(separator: "-").first.map(String.init) ?? code
+    }
+
+    /// Human-readable language name in the current UI language
+    /// ("English" / "英语", "Chinese" / "中文"), falling back to the tag.
+    static func displayName(for code: String) -> String {
+        let locale = Locale(identifier: L.isChinese ? "zh_CN" : "en_US")
+        let base = primary(code)
+        return locale.localizedString(forIdentifier: base) ?? base
+    }
 }

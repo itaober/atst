@@ -37,7 +37,8 @@ final class TranslatorViewModel: ObservableObject {
     /// Caller invokes this synchronously from the hotkey handler so we beat
     /// the network on screen.
     func beginTextTranslation(source: String) {
-        let segments = makePlaceholderSegments()
+        let languages = resolveLanguages(for: source)
+        let segments = makePlaceholderSegments(targetLanguage: languages.target)
         if segments.api.isEmpty && segments.ai == nil {
             state = .text(TextSegments(source: source, api: [], ai: nil, bothDisabled: true))
         } else {
@@ -45,9 +46,17 @@ final class TranslatorViewModel: ObservableObject {
                 source: source,
                 api: segments.api,
                 ai: segments.ai,
-                bothDisabled: false
+                bothDisabled: false,
+                sourceLanguage: languages.source,
+                targetLanguage: languages.target
             ))
         }
+    }
+
+    /// Detected source language (header label) plus the target language the
+    /// providers should translate into.
+    private func resolveLanguages(for source: String) -> (source: String?, target: String) {
+        (LanguageDetector.detect(source), configuration.targetLanguage)
     }
 
     func beginScreenshotTranslation() {
@@ -78,7 +87,8 @@ final class TranslatorViewModel: ObservableObject {
     func translateSelection(_ selection: SelectedText, bypassCache: Bool = false) async {
         cancelActiveTextTasks()
 
-        let providers = buildEnabledProviders()
+        let languages = resolveLanguages(for: selection.text)
+        let providers = buildEnabledProviders(targetLanguage: languages.target)
         if noTranslatorEnabled {
             // Both top-level switches are off — short-circuit to the
             // empty-state tooltip with the "Open settings" CTA.
@@ -144,7 +154,9 @@ final class TranslatorViewModel: ObservableObject {
             source: selection.text,
             api: apiSegments,
             ai: aiSegment,
-            bothDisabled: false
+            bothDisabled: false,
+            sourceLanguage: languages.source,
+            targetLanguage: languages.target
         ))
 
         // For each provider that wasn't a cache hit, kick off a Task. Each
@@ -203,19 +215,27 @@ final class TranslatorViewModel: ObservableObject {
     /// "model not configured" error inline instead of silently disappearing.
     /// API providers come from the user's enabled list in the order they're
     /// defined in settings.
-    private func buildEnabledProviders() -> [TranslationProvider] {
+    private func buildEnabledProviders(targetLanguage: String) -> [TranslationProvider] {
         var providers: [TranslationProvider] = []
         if configuration.apiEnabled {
             for kind in configuration.enabledAPIProviderKinds {
-                if let provider = makeProvider(for: kind) {
+                if let provider = makeProvider(for: kind, targetLanguage: targetLanguage) {
                     providers.append(provider)
                 }
             }
         }
         if configuration.aiEnabled {
-            providers.append(OpenAIProvider(configuration: configuration))
+            providers.append(makeAIProvider(targetLanguage: targetLanguage))
         }
         return providers
+    }
+
+    /// The AI provider reads its target from the configuration, so hand it
+    /// a copy with the effective target substituted in.
+    private func makeAIProvider(targetLanguage: String) -> OpenAIProvider {
+        var config = configuration
+        config.targetLanguage = targetLanguage
+        return OpenAIProvider(configuration: config)
     }
 
     /// True only when the user has flipped both top-level switches off.
@@ -226,25 +246,25 @@ final class TranslatorViewModel: ObservableObject {
         !configuration.aiEnabled && !configuration.apiEnabled
     }
 
-    private func makeProvider(for kind: TranslationProviderID) -> TranslationProvider? {
+    private func makeProvider(for kind: TranslationProviderID, targetLanguage: String) -> TranslationProvider? {
         switch kind {
         case .ai:
-            return OpenAIProvider(configuration: configuration)
+            return makeAIProvider(targetLanguage: targetLanguage)
         case .google:
-            return GoogleProvider(targetLanguage: configuration.targetLanguage)
+            return GoogleProvider(targetLanguage: targetLanguage)
         case .microsoft:
-            return MicrosoftProvider(targetLanguage: configuration.targetLanguage)
+            return MicrosoftProvider(targetLanguage: targetLanguage)
         }
     }
 
     /// Pre-flight placeholder segments used by `beginTextTranslation`. Mirrors
     /// what `translateSelection` will seed once it has the selection, so the
     /// hotkey-to-first-frame path doesn't flash an empty tooltip.
-    private func makePlaceholderSegments() -> (api: [ProviderSegment], ai: ProviderSegment?) {
+    private func makePlaceholderSegments(targetLanguage: String) -> (api: [ProviderSegment], ai: ProviderSegment?) {
         var apiSegments: [ProviderSegment] = []
         if configuration.apiEnabled {
             for kind in configuration.enabledAPIProviderKinds {
-                let provider = makeProvider(for: kind)
+                let provider = makeProvider(for: kind, targetLanguage: targetLanguage)
                 apiSegments.append(ProviderSegment(
                     id: kind,
                     displayName: provider?.displayName ?? kind.rawValue,
@@ -255,7 +275,7 @@ final class TranslatorViewModel: ObservableObject {
         }
         var aiSegment: ProviderSegment? = nil
         if configuration.aiEnabled {
-            let provider = OpenAIProvider(configuration: configuration)
+            let provider = makeAIProvider(targetLanguage: targetLanguage)
             aiSegment = ProviderSegment(
                 id: .ai,
                 displayName: provider.displayName,
@@ -478,6 +498,18 @@ struct TextSegments: Equatable {
     /// True iff both AI and API switches are off — UI shows an empty-state
     /// "no provider enabled" prompt with a "Open settings" CTA.
     var bothDisabled: Bool
+    /// BCP-47 tag of the detected source language; nil when undecidable.
+    var sourceLanguage: String? = nil
+    /// Display string of the target the providers were asked for. Differs
+    /// from the configured target when reverse translation kicked in.
+    var targetLanguage: String = ""
+
+    /// "English → 简体中文" for the tooltip header; nil when nothing is known.
+    var languagePairLabel: String? {
+        guard !targetLanguage.isEmpty else { return nil }
+        guard let sourceLanguage else { return targetLanguage }
+        return "\(LanguageDetector.displayName(for: sourceLanguage)) → \(targetLanguage)"
+    }
 
     var hasAnyContent: Bool {
         if let ai = ai, ai.state.hasContent { return true }
