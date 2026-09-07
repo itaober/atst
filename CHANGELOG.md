@@ -6,6 +6,10 @@ All notable changes are recorded here. Each version section is what gets pasted 
 
 ## Unreleased
 
+(no changes yet)
+
+## v0.4.0
+
 - **Line breaks survive translation** — the AI prompt now demands the source's line / paragraph structure, Microsoft translates line by line like Google, and screenshot OCR merges soft-wrapped lines inside a paragraph so line-by-line translators see whole sentences
 - **Reverse translation** — when the selection is already in your target language it's translated into a new **Secondary language** setting instead (Chinese ⇄ English by default)
 - **Type to translate** — `⌥D` with nothing selected opens a text box in the tooltip; Return translates, Shift+Return inserts a newline
